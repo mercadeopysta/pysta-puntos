@@ -1,0 +1,254 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f4f5f7;
+  --foreground: #111111;
+  --muted: #6b7280;
+  --card: #ffffff;
+  --border: #e5e7eb;
+  --gold: #d4af37;
+  --danger: #b91c1c;
+  --shadow: 0 18px 45px rgba(0, 0, 0, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(212, 175, 55, 0.10), transparent 30%),
+    linear-gradient(180deg, #f7f7f7 0%, #eeeeee 100%);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.pysta-page {
+  min-height: 100vh;
+  padding: 32px 18px;
+}
+
+.pysta-shell {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.pysta-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+.pysta-panel {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(229, 231, 235, 0.95);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+}
+
+.pysta-logo {
+  width: 170px;
+  display: block;
+}
+
+.pysta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(212, 175, 55, 0.14);
+  color: #7a5b00;
+  border: 1px solid rgba(212, 175, 55, 0.24);
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.pysta-title {
+  font-size: clamp(30px, 5vw, 48px);
+  line-height: 1.04;
+  color: #111111;
+  margin: 0;
+}
+
+.pysta-subtitle {
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0;
+}
+
+.pysta-section-title {
+  font-size: 28px;
+  color: #111111;
+  margin: 0;
+}
+
+.pysta-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.pysta-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.pysta-input,
+.pysta-select,
+.pysta-textarea {
+  width: 100%;
+  background: #ffffff;
+  color: #111111;
+  border: 1px solid #d1d5db;
+  border-radius: 14px;
+  padding: 14px 15px;
+  font-size: 15px;
+  outline: none;
+  transition: 0.2s ease;
+}
+
+.pysta-input::placeholder,
+.pysta-textarea::placeholder {
+  color: #6b7280;
+}
+
+.pysta-input:focus,
+.pysta-select:focus,
+.pysta-textarea:focus {
+  border-color: rgba(212, 175, 55, 0.85);
+  box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.12);
+}
+
+.pysta-btn {
+  border: none;
+  border-radius: 14px;
+  padding: 14px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease;
+}
+
+.pysta-btn:hover {
+  transform: translateY(-1px);
+}
+
+.pysta-btn-dark {
+  background: #111111;
+  color: white;
+  box-shadow: 0 12px 24px rgba(17, 17, 17, 0.18);
+}
+
+.pysta-btn-gold {
+  background: linear-gradient(180deg, #e2bd49 0%, #d4af37 100%);
+  color: #111111;
+  box-shadow: 0 12px 24px rgba(212, 175, 55, 0.22);
+}
+
+.pysta-btn-light {
+  background: #f3f4f6;
+  color: #111111;
+  border: 1px solid #e5e7eb;
+}
+
+.pysta-btn-danger {
+  background: #dc2626;
+  color: white;
+}
+
+.pysta-link-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: #111111;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pysta-message {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f9fafb;
+  color: #111111;
+  border: 1px solid #e5e7eb;
+  font-size: 14px;
+}
+
+.pysta-stat-card {
+  background: white;
+  border: 1px solid #ececec;
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
+}
+
+.pysta-stat-label {
+  margin: 0 0 8px 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.pysta-stat-value {
+  margin: 0;
+  color: #111111;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.pysta-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pysta-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .pysta-page {
+    padding: 20px 14px;
+  }
+
+  .pysta-title {
+    font-size: 34px;
+  }
+
+  .pysta-section-title {
+    font-size: 24px;
+  }
+}
