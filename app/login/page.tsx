@@ -1,17 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../lib/supabase"
-
-type ProfileRow = {
-  id: string
-  full_name: string
-  email: string
-  password_text: string
-  client_type: string
-  is_active: boolean
-}
 
 export default function LoginPage() {
   const router = useRouter()
@@ -24,149 +16,200 @@ export default function LoginPage() {
   const handleLogin = async () => {
     setMensaje("")
 
-    if (!email || !password) {
-      setMensaje("Completa correo y contraseña.")
+    if (!email.trim() || !password.trim()) {
+      setMensaje("Ingresa tu correo y contraseña.")
       return
     }
 
-    setCargando(true)
+    try {
+      setCargando(true)
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, password_text, client_type, is_active")
-      .eq("email", email.trim())
-      .eq("password_text", password)
-      .maybeSingle()
+      const correo = email.trim().toLowerCase()
 
-    if (error) {
-      setMensaje("Ocurrió un error al iniciar sesión.")
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: correo,
+        password,
+      })
+
+      if (authError) {
+        setMensaje("Correo o contraseña incorrectos.")
+        setCargando(false)
+        return
+      }
+
+      const user = authData.user
+
+      if (!user) {
+        setMensaje("No se pudo iniciar sesión correctamente.")
+        setCargando(false)
+        return
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, email, full_name, is_active, is_approved")
+        .eq("id", user.id)
+        .maybeSingle()
+
+      if (profileError || !profile) {
+        await supabase.auth.signOut()
+        setMensaje("No se encontró el perfil del cliente.")
+        setCargando(false)
+        return
+      }
+
+      if (!profile.is_active) {
+        await supabase.auth.signOut()
+        setMensaje("Tu cuenta está inactiva. Comunícate con el administrador.")
+        setCargando(false)
+        return
+      }
+
+      if (!profile.is_approved) {
+        await supabase.auth.signOut()
+        setMensaje("Tu cuenta fue creada correctamente, pero aún está pendiente de aprobación por el administrador.")
+        setCargando(false)
+        return
+      }
+
+      localStorage.setItem("cliente_email", profile.email)
+      localStorage.setItem("cliente_name", profile.full_name || "")
+
+      router.push("/dashboard")
+    } catch {
+      setMensaje("Ocurrió un error inesperado al iniciar sesión.")
+    } finally {
       setCargando(false)
-      return
     }
-
-    const cliente = data as ProfileRow | null
-
-    if (!cliente) {
-      setMensaje("Correo o contraseña incorrectos.")
-      setCargando(false)
-      return
-    }
-
-    if (!cliente.is_active) {
-      setMensaje("Tu cuenta está inactiva. Comunícate con el administrador.")
-      setCargando(false)
-      return
-    }
-
-    localStorage.setItem("cliente_nombre", cliente.full_name || "")
-    localStorage.setItem("cliente_email", cliente.email || "")
-    localStorage.setItem("cliente_tipo", cliente.client_type || "")
-
-    router.push("/dashboard")
   }
 
   return (
-    <main className="pysta-page" style={{ display: "flex", alignItems: "center" }}>
-      <div className="pysta-shell" style={{ maxWidth: "1080px" }}>
-        <section
-          className="pysta-card"
-          style={{
-            overflow: "hidden",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-          }}
-        >
-          <div
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "#f5f5f5",
+        padding: "40px 20px",
+        fontFamily: "Arial, sans-serif",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "520px",
+          background: "#fff",
+          borderRadius: "20px",
+          padding: "32px",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+        }}
+      >
+        <div style={{ display: "grid", gap: "8px", marginBottom: "22px" }}>
+          <span
             style={{
-              background: "linear-gradient(180deg, #111111 0%, #1f2937 100%)",
-              color: "white",
-              padding: "34px",
-              display: "grid",
-              alignContent: "center",
-              gap: "16px",
+              display: "inline-flex",
+              width: "fit-content",
+              padding: "6px 10px",
+              borderRadius: "999px",
+              fontSize: "12px",
+              fontWeight: 700,
+              background: "rgba(212, 175, 55, 0.14)",
+              color: "#7a5b00",
+              border: "1px solid rgba(212, 175, 55, 0.24)",
             }}
           >
-            <img
-              src="/logo-pysta.png"
-              alt="Pysta"
-              style={{ width: "170px", filter: "brightness(1.1)" }}
-            />
+            Acceso cliente
+          </span>
 
-            <span
-              style={{
-                display: "inline-flex",
-                width: "fit-content",
-                background: "rgba(212, 175, 55, 0.18)",
-                color: "#f3d46f",
-                border: "1px solid rgba(212,175,55,0.28)",
-                padding: "8px 12px",
-                borderRadius: "999px",
-                fontWeight: 700,
-                fontSize: "13px",
-              }}
-            >
-              Acceso de clientes
-            </span>
+          <h1 style={{ margin: 0, fontSize: "32px", color: "#111" }}>
+            Iniciar sesión
+          </h1>
 
-            <h1 style={{ margin: 0, fontSize: "38px", lineHeight: 1.05 }}>
-              Ingresa a tu cuenta
-            </h1>
+          <p style={{ margin: 0, color: "#6b7280", lineHeight: 1.5 }}>
+            Ingresa con tu correo y contraseña para acceder a tus puntos y premios.
+          </p>
+        </div>
 
-            <p style={{ margin: 0, color: "rgba(255,255,255,0.82)", lineHeight: 1.6 }}>
-              Consulta tus puntos, revisa tus facturas cargadas y accede a tus premios
-              disponibles dentro del programa Puntos Pysta.
-            </p>
+        <div style={{ display: "grid", gap: "16px" }}>
+          <input
+            className="campo-pysta"
+            type="email"
+            placeholder="Correo electrónico"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+
+          <input
+            className="campo-pysta"
+            type="password"
+            placeholder="Contraseña"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+
+          <button
+            onClick={handleLogin}
+            disabled={cargando}
+            style={{
+              background: "#111",
+              color: "#fff",
+              border: "none",
+              padding: "14px 22px",
+              borderRadius: "10px",
+              cursor: cargando ? "not-allowed" : "pointer",
+              opacity: cargando ? 0.7 : 1,
+              fontSize: "16px",
+            }}
+          >
+            {cargando ? "Ingresando..." : "Ingresar"}
+          </button>
+
+          <Link
+            href="/registro"
+            style={{
+              textAlign: "center",
+              color: "#111",
+              textDecoration: "none",
+              fontWeight: 700,
+            }}
+          >
+            Crear cuenta
+          </Link>
+        </div>
+
+        {mensaje && (
+          <div
+            style={{
+              marginTop: "18px",
+              background: "#fff7ed",
+              border: "1px solid #fed7aa",
+              color: "#9a3412",
+              borderRadius: "14px",
+              padding: "14px 16px",
+            }}
+          >
+            {mensaje}
           </div>
-
-          <div style={{ padding: "34px", display: "grid", gap: "18px" }}>
-            <a href="/" className="pysta-link-back">
-              ← Volver al inicio
-            </a>
-
-            <div style={{ display: "grid", gap: "8px" }}>
-              <h2 style={{ margin: 0, fontSize: "30px", color: "#111" }}>
-                Iniciar sesión
-              </h2>
-              <p style={{ margin: 0, color: "#6b7280" }}>
-                Ingresa con tu correo y contraseña.
-              </p>
-            </div>
-
-            <div className="pysta-grid" style={{ gap: "14px" }}>
-              <input
-                className="pysta-input"
-                type="email"
-                placeholder="Correo electrónico"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-
-              <input
-                className="pysta-input"
-                type="password"
-                placeholder="Contraseña"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-
-              <button
-                onClick={handleLogin}
-                disabled={cargando}
-                className="pysta-btn pysta-btn-dark"
-                style={{ opacity: cargando ? 0.7 : 1 }}
-              >
-                {cargando ? "Ingresando..." : "Entrar"}
-              </button>
-
-              <a href="/registro" className="pysta-btn pysta-btn-gold">
-                Registrarme
-              </a>
-
-              {mensaje && <p className="pysta-message">{mensaje}</p>}
-            </div>
-          </div>
-        </section>
+        )}
       </div>
+
+      <style>{`
+        .campo-pysta {
+          width: 100%;
+          padding: 14px;
+          border-radius: 10px;
+          border: 1px solid #d1d5db;
+          font-size: 16px;
+          color: #111;
+          background: #fff;
+          box-sizing: border-box;
+        }
+
+        .campo-pysta::placeholder {
+          color: #666;
+        }
+      `}</style>
     </main>
   )
 }

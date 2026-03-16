@@ -1,10 +1,14 @@
 "use client"
 
-import { ChangeEvent, useState } from "react"
+import { ChangeEvent, useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "../../../../lib/supabase"
 import LogoutButton from "../../../../components/LogoutButton"
 
 export default function NuevaFacturaPage() {
+  const router = useRouter()
+
+  const [autorizado, setAutorizado] = useState(false)
   const [invoiceNumber, setInvoiceNumber] = useState("")
   const [invoiceDate, setInvoiceDate] = useState("")
   const [amountWithoutVat, setAmountWithoutVat] = useState("")
@@ -12,6 +16,61 @@ export default function NuevaFacturaPage() {
   const [file, setFile] = useState<File | null>(null)
   const [mensaje, setMensaje] = useState("")
   const [guardando, setGuardando] = useState(false)
+  const [cargando, setCargando] = useState(true)
+
+  const cerrarSesionCliente = async () => {
+    await supabase.auth.signOut()
+    localStorage.removeItem("cliente_email")
+    localStorage.removeItem("cliente_name")
+    localStorage.removeItem("cliente_tipo")
+    router.replace("/login")
+  }
+
+  useEffect(() => {
+    const validarCliente = async () => {
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
+
+        if (sessionError || !session?.user) {
+          await cerrarSesionCliente()
+          return
+        }
+
+        const user = session.user
+
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, email, full_name, client_type, is_active, is_approved")
+          .eq("id", user.id)
+          .maybeSingle()
+
+        if (profileError || !profile) {
+          await cerrarSesionCliente()
+          return
+        }
+
+        if (!profile.is_active || !profile.is_approved) {
+          await cerrarSesionCliente()
+          return
+        }
+
+        localStorage.setItem("cliente_email", profile.email || "")
+        localStorage.setItem("cliente_name", profile.full_name || "")
+        localStorage.setItem("cliente_tipo", profile.client_type || "")
+
+        setAutorizado(true)
+      } catch {
+        await cerrarSesionCliente()
+      } finally {
+        setCargando(false)
+      }
+    }
+
+    validarCliente()
+  }, [router])
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null
@@ -142,6 +201,26 @@ export default function NuevaFacturaPage() {
     } finally {
       setGuardando(false)
     }
+  }
+
+  if (cargando) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "Arial, sans-serif",
+        }}
+      >
+        Validando acceso...
+      </main>
+    )
+  }
+
+  if (!autorizado) {
+    return null
   }
 
   return (

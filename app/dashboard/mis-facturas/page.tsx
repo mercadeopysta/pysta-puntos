@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
 import LogoutButton from "../../../components/LogoutButton"
 
@@ -13,38 +14,101 @@ type Factura = {
 }
 
 export default function MisFacturasPage() {
+  const router = useRouter()
+
+  const [autorizado, setAutorizado] = useState(false)
   const [facturas, setFacturas] = useState<Factura[]>([])
   const [cargando, setCargando] = useState(true)
   const [mensaje, setMensaje] = useState("")
 
+  const cerrarSesionCliente = async () => {
+    await supabase.auth.signOut()
+    localStorage.removeItem("cliente_email")
+    localStorage.removeItem("cliente_name")
+    localStorage.removeItem("cliente_tipo")
+    router.replace("/login")
+  }
+
   useEffect(() => {
     const cargarFacturas = async () => {
-      const email = localStorage.getItem("cliente_email")
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
 
-      if (!email) {
-        setMensaje("No se encontró el usuario logueado.")
-        setCargando(false)
+        if (sessionError || !session?.user) {
+          await cerrarSesionCliente()
+          return
+        }
+
+        const user = session.user
+
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, email, full_name, client_type, is_active, is_approved")
+          .eq("id", user.id)
+          .maybeSingle()
+
+        if (profileError || !profile) {
+          await cerrarSesionCliente()
+          return
+        }
+
+        if (!profile.is_active || !profile.is_approved) {
+          await cerrarSesionCliente()
+          return
+        }
+
+        localStorage.setItem("cliente_email", profile.email || "")
+        localStorage.setItem("cliente_name", profile.full_name || "")
+        localStorage.setItem("cliente_tipo", profile.client_type || "")
+
+        setAutorizado(true)
+
+        const { data, error } = await supabase
+          .from("invoices")
+          .select("id, invoice_number, invoice_date, amount_without_vat, status")
+          .eq("user_email", profile.email)
+          .order("created_at", { ascending: false })
+
+        if (error) {
+          setMensaje("Ocurrió un error al cargar las facturas.")
+          setCargando(false)
+          return
+        }
+
+        setFacturas(data || [])
+      } catch {
+        await cerrarSesionCliente()
         return
-      }
-
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("id, invoice_number, invoice_date, amount_without_vat, status")
-        .eq("user_email", email)
-        .order("created_at", { ascending: false })
-
-      if (error) {
-        setMensaje("Ocurrió un error al cargar las facturas.")
+      } finally {
         setCargando(false)
-        return
       }
-
-      setFacturas(data || [])
-      setCargando(false)
     }
 
     cargarFacturas()
-  }, [])
+  }, [router])
+
+  if (cargando) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "Arial, sans-serif",
+        }}
+      >
+        Cargando facturas...
+      </main>
+    )
+  }
+
+  if (!autorizado) {
+    return null
+  }
 
   return (
     <main
@@ -77,25 +141,19 @@ export default function MisFacturasPage() {
           Aquí puedes ver las facturas que has registrado en Puntos Pysta.
         </p>
 
-        {cargando && (
-          <div style={cardStyle}>
-            <p style={{ color: "#333" }}>Cargando facturas...</p>
-          </div>
-        )}
-
-        {!cargando && mensaje && (
+        {mensaje && (
           <div style={cardStyle}>
             <p style={{ color: "#333" }}>{mensaje}</p>
           </div>
         )}
 
-        {!cargando && !mensaje && facturas.length === 0 && (
+        {!mensaje && facturas.length === 0 && (
           <div style={cardStyle}>
             <p style={{ color: "#333" }}>Aún no has registrado facturas.</p>
           </div>
         )}
 
-        {!cargando && !mensaje && facturas.length > 0 && (
+        {!mensaje && facturas.length > 0 && (
           <div
             style={{
               backgroundColor: "white",

@@ -58,121 +58,99 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "linear-gradient(180deg, #f8f8f8 0%, #efefef 100%)",
-        padding: "40px 20px",
-        fontFamily: "Arial, sans-serif",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: "520px",
-          width: "100%",
-          margin: "0 auto",
-          backgroundColor: "white",
-          padding: "32px",
-          borderRadius: "18px",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-          border: "1px solid #eee",
-        }}
-      >
-        <div style={{ marginBottom: "18px" }}>
-          <a
-            href="/"
-            style={{
-              color: "#111",
-              textDecoration: "none",
-              fontWeight: "bold",
-              fontSize: "14px",
-            }}
-          >
-            ← Volver al inicio
-          </a>
-        </div>
-
-        <img
-          src="/logo-pysta.png"
-          alt="Pysta"
+    <main className="pysta-page" style={{ display: "flex", alignItems: "center" }}>
+      <div className="pysta-shell" style={{ maxWidth: "1080px" }}>
+        <section
+          className="pysta-card"
           style={{
-            width: "160px",
-            height: "auto",
-            display: "block",
-            margin: "0 auto 20px auto",
+            overflow: "hidden",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
           }}
-        />
-
-        <h1 style={{ fontSize: "32px", marginBottom: "10px", color: "#111", textAlign: "center" }}>
-          Login administrador
-        </h1>
-
-        <p style={{ fontSize: "16px", marginBottom: "30px", color: "#555", textAlign: "center" }}>
-          Ingresa las credenciales de administrador para acceder al panel.
-        </p>
-
-        <div style={{ display: "grid", gap: "16px" }}>
-          <input
-            className="campo-pysta"
-            type="email"
-            placeholder="Correo administrador"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-
-          <input
-            className="campo-pysta"
-            type="password"
-            placeholder="Contraseña"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-
-          <button
-            onClick={handleLogin}
-            disabled={cargando}
+        >
+          <div
             style={{
-              backgroundColor: "#111",
+              background: "linear-gradient(180deg, #111111 0%, #242424 100%)",
               color: "white",
-              border: "none",
-              padding: "14px 24px",
-              borderRadius: "10px",
-              cursor: "pointer",
-              fontSize: "16px",
-              fontWeight: "bold",
-              opacity: cargando ? 0.7 : 1,
+              padding: "34px",
+              display: "grid",
+              alignContent: "center",
+              gap: "16px",
             }}
           >
-            {cargando ? "Ingresando..." : "Entrar como admin"}
-          </button>
+            <img src="/logo-pysta.png" alt="Pysta" style={{ width: "170px" }} />
 
-          {mensaje && (
-            <p style={{ color: "#111", fontSize: "15px", marginTop: "6px", textAlign: "center" }}>
-              {mensaje}
+            <span
+              style={{
+                display: "inline-flex",
+                width: "fit-content",
+                background: "rgba(212, 175, 55, 0.18)",
+                color: "#f3d46f",
+                border: "1px solid rgba(212,175,55,0.28)",
+                padding: "8px 12px",
+                borderRadius: "999px",
+                fontWeight: 700,
+                fontSize: "13px",
+              }}
+            >
+              Acceso administrativo
+            </span>
+
+            <h1 style={{ margin: 0, fontSize: "38px", lineHeight: 1.05 }}>
+              Panel de administración
+            </h1>
+
+            <p style={{ margin: 0, color: "rgba(255,255,255,0.82)", lineHeight: 1.6 }}>
+              Administra clientes, facturas, premios, redenciones, asesores y configuración
+              general del sistema.
             </p>
-          )}
-        </div>
+          </div>
+
+          <div style={{ padding: "34px", display: "grid", gap: "18px" }}>
+            <a href="/" className="pysta-link-back">
+              ← Volver al inicio
+            </a>
+
+            <div style={{ display: "grid", gap: "8px" }}>
+              <h2 style={{ margin: 0, fontSize: "30px", color: "#111" }}>
+                Login administrador
+              </h2>
+              <p style={{ margin: 0, color: "#6b7280" }}>
+                Ingresa tus credenciales para acceder al panel.
+              </p>
+            </div>
+
+            <div className="pysta-grid" style={{ gap: "14px" }}>
+              <input
+                className="pysta-input"
+                type="email"
+                placeholder="Correo administrador"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+
+              <input
+                className="pysta-input"
+                type="password"
+                placeholder="Contraseña"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+
+              <button
+                onClick={handleLogin}
+                disabled={cargando}
+                className="pysta-btn pysta-btn-dark"
+                style={{ opacity: cargando ? 0.7 : 1 }}
+              >
+                {cargando ? "Ingresando..." : "Entrar como admin"}
+              </button>
+
+              {mensaje && <p className="pysta-message">{mensaje}</p>}
+            </div>
+          </div>
+        </section>
       </div>
-
-      <style>{`
-        .campo-pysta {
-          width: 100%;
-          padding: 14px;
-          border-radius: 10px;
-          border: 1px solid #ccc;
-          font-size: 16px;
-          color: #111;
-          background: #fff;
-          box-sizing: border-box;
-        }
-
-        .campo-pysta::placeholder {
-          color: #666;
-        }
-      `}</style>
     </main>
   )
 }

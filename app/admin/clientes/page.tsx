@@ -18,6 +18,7 @@ type Cliente = {
   whatsapp: string
   email: string
   is_active: boolean
+  is_approved: boolean
 }
 
 type Asesor = {
@@ -40,6 +41,7 @@ export default function AdminClientesPage() {
   const [filtroDocumento, setFiltroDocumento] = useState("")
   const [filtroCorreo, setFiltroCorreo] = useState("")
   const [filtroTipo, setFiltroTipo] = useState("")
+  const [filtroAprobacion, setFiltroAprobacion] = useState("")
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [fullName, setFullName] = useState("")
@@ -50,6 +52,7 @@ export default function AdminClientesPage() {
   const [whatsapp, setWhatsapp] = useState("")
   const [email, setEmail] = useState("")
   const [isActive, setIsActive] = useState(true)
+  const [isApproved, setIsApproved] = useState(true)
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [clienteAEliminar, setClienteAEliminar] = useState<Cliente | null>(null)
@@ -73,7 +76,7 @@ export default function AdminClientesPage() {
       const { data: clientesData, error: clientesError } = await supabase
         .from("profiles")
         .select(
-          "id, full_name, client_type, advisor_name, document_type, document_number, whatsapp, email, is_active"
+          "id, full_name, client_type, advisor_name, document_type, document_number, whatsapp, email, is_active, is_approved"
         )
         .order("full_name", { ascending: true })
 
@@ -102,7 +105,7 @@ export default function AdminClientesPage() {
     const { data, error } = await supabase
       .from("profiles")
       .select(
-        "id, full_name, client_type, advisor_name, document_type, document_number, whatsapp, email, is_active"
+        "id, full_name, client_type, advisor_name, document_type, document_number, whatsapp, email, is_active, is_approved"
       )
       .order("full_name", { ascending: true })
 
@@ -119,6 +122,7 @@ export default function AdminClientesPage() {
     setWhatsapp("")
     setEmail("")
     setIsActive(true)
+    setIsApproved(true)
   }
 
   const handleEditar = (cliente: Cliente) => {
@@ -131,6 +135,7 @@ export default function AdminClientesPage() {
     setWhatsapp(cliente.whatsapp || "")
     setEmail(cliente.email || "")
     setIsActive(Boolean(cliente.is_active))
+    setIsApproved(Boolean(cliente.is_approved))
     setMensaje("")
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
@@ -161,6 +166,7 @@ export default function AdminClientesPage() {
         whatsapp,
         email,
         is_active: isActive,
+        is_approved: isApproved,
       })
       .eq("id", editingId)
 
@@ -192,6 +198,25 @@ export default function AdminClientesPage() {
 
     setTipoMensaje("success")
     setMensaje(cliente.is_active ? "Cliente desactivado correctamente." : "Cliente activado correctamente.")
+    recargarClientes()
+  }
+
+  const handleAprobarCliente = async (cliente: Cliente) => {
+    setMensaje("")
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ is_approved: true })
+      .eq("id", cliente.id)
+
+    if (error) {
+      setTipoMensaje("error")
+      setMensaje("Ocurrió un error al aprobar el cliente: " + error.message)
+      return
+    }
+
+    setTipoMensaje("success")
+    setMensaje("Cliente aprobado correctamente.")
     recargarClientes()
   }
 
@@ -256,6 +281,7 @@ export default function AdminClientesPage() {
     const documento = filtroDocumento.trim().toLowerCase()
     const correo = filtroCorreo.trim().toLowerCase()
     const tipo = filtroTipo.trim().toLowerCase()
+    const aprobacion = filtroAprobacion.trim().toLowerCase()
 
     return clientes.filter((cliente) => {
       const coincideNombre = !nombre || (cliente.full_name || "").toLowerCase().includes(nombre)
@@ -264,9 +290,14 @@ export default function AdminClientesPage() {
       const coincideCorreo = !correo || (cliente.email || "").toLowerCase().includes(correo)
       const coincideTipo = !tipo || (cliente.client_type || "").toLowerCase() === tipo
 
-      return coincideNombre && coincideDocumento && coincideCorreo && coincideTipo
+      const coincideAprobacion =
+        !aprobacion ||
+        (aprobacion === "aprobado" && cliente.is_approved) ||
+        (aprobacion === "pendiente" && !cliente.is_approved)
+
+      return coincideNombre && coincideDocumento && coincideCorreo && coincideTipo && coincideAprobacion
     })
-  }, [clientes, filtroNombre, filtroDocumento, filtroCorreo, filtroTipo])
+  }, [clientes, filtroNombre, filtroDocumento, filtroCorreo, filtroTipo, filtroAprobacion])
 
   if (!autorizado) {
     return (
@@ -290,7 +321,7 @@ export default function AdminClientesPage() {
                 <span className="pysta-badge">Gestión administrativa</span>
                 <h1 className="pysta-section-title">Administrar clientes</h1>
                 <p className="pysta-subtitle">
-                  Edita datos de clientes, corrige su información, cambia su estado o aplica filtros de búsqueda.
+                  Edita datos de clientes, apruébalos manualmente y controla su acceso a la app.
                 </p>
               </div>
 
@@ -306,20 +337,27 @@ export default function AdminClientesPage() {
               </p>
             </div>
 
-            <div className="pysta-grid-2" style={{ marginBottom: "16px" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: "16px",
+                marginBottom: "16px",
+              }}
+            >
               <div>
                 <label style={labelStyle}>Filtrar por nombre</label>
-                <input className="pysta-input" value={filtroNombre} onChange={(e) => setFiltroNombre(e.target.value)} placeholder="Ej: Sergio" />
+                <input className="pysta-input" value={filtroNombre} onChange={(e) => setFiltroNombre(e.target.value)} />
               </div>
 
               <div>
                 <label style={labelStyle}>Filtrar por documento</label>
-                <input className="pysta-input" value={filtroDocumento} onChange={(e) => setFiltroDocumento(e.target.value)} placeholder="Ej: 123456" />
+                <input className="pysta-input" value={filtroDocumento} onChange={(e) => setFiltroDocumento(e.target.value)} />
               </div>
 
               <div>
                 <label style={labelStyle}>Filtrar por correo</label>
-                <input className="pysta-input" value={filtroCorreo} onChange={(e) => setFiltroCorreo(e.target.value)} placeholder="Ej: correo@empresa.com" />
+                <input className="pysta-input" value={filtroCorreo} onChange={(e) => setFiltroCorreo(e.target.value)} />
               </div>
 
               <div>
@@ -330,6 +368,15 @@ export default function AdminClientesPage() {
                   <option value="distribuidor">Distribuidor</option>
                 </select>
               </div>
+
+              <div>
+                <label style={labelStyle}>Filtrar por aprobación</label>
+                <select className="pysta-select" value={filtroAprobacion} onChange={(e) => setFiltroAprobacion(e.target.value)}>
+                  <option value="">Todos</option>
+                  <option value="aprobado">Aprobados</option>
+                  <option value="pendiente">Pendientes</option>
+                </select>
+              </div>
             </div>
 
             <button
@@ -338,6 +385,7 @@ export default function AdminClientesPage() {
                 setFiltroDocumento("")
                 setFiltroCorreo("")
                 setFiltroTipo("")
+                setFiltroAprobacion("")
               }}
               className="pysta-btn pysta-btn-light"
             >
@@ -350,9 +398,6 @@ export default function AdminClientesPage() {
               <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>
                 {editingId ? "Editar cliente" : "Selecciona un cliente para editar"}
               </h2>
-              <p style={{ margin: 0, color: "#6b7280" }}>
-                Modifica la información del cliente seleccionado desde la tabla inferior.
-              </p>
             </div>
 
             <div
@@ -385,9 +430,15 @@ export default function AdminClientesPage() {
               <input className="pysta-input" type="text" placeholder="Número de documento" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} disabled={!editingId} />
               <input className="pysta-input" type="text" placeholder="WhatsApp" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} disabled={!editingId} />
               <input className="pysta-input" type="email" placeholder="Correo electrónico" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!editingId} />
+
               <select className="pysta-select" value={isActive ? "true" : "false"} onChange={(e) => setIsActive(e.target.value === "true")} disabled={!editingId}>
                 <option value="true">Activo</option>
                 <option value="false">Inactivo</option>
+              </select>
+
+              <select className="pysta-select" value={isApproved ? "true" : "false"} onChange={(e) => setIsApproved(e.target.value === "true")} disabled={!editingId}>
+                <option value="true">Aprobado</option>
+                <option value="false">Pendiente</option>
               </select>
             </div>
 
@@ -465,6 +516,7 @@ export default function AdminClientesPage() {
                           </h3>
                           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                             <span style={miniBadge}>{cliente.client_type || "Sin tipo"}</span>
+
                             <span
                               style={{
                                 ...miniBadge,
@@ -475,19 +527,52 @@ export default function AdminClientesPage() {
                             >
                               {cliente.is_active ? "Activo" : "Inactivo"}
                             </span>
+
+                            <span
+                              style={{
+                                ...miniBadge,
+                                background: cliente.is_approved ? "#eff6ff" : "#fff7ed",
+                                color: cliente.is_approved ? "#1d4ed8" : "#9a3412",
+                                border: cliente.is_approved ? "1px solid #bfdbfe" : "1px solid #fed7aa",
+                              }}
+                            >
+                              {cliente.is_approved ? "Aprobado" : "Pendiente"}
+                            </span>
                           </div>
                         </div>
 
                         <div className="pysta-actions">
-                          <button onClick={() => handleEditar(cliente)} className="pysta-btn pysta-btn-gold" style={smallActionBtn}>
+                          {!cliente.is_approved && (
+                            <button
+                              onClick={() => handleAprobarCliente(cliente)}
+                              className="pysta-btn pysta-btn-dark"
+                              style={smallActionBtn}
+                            >
+                              Aprobar
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => handleEditar(cliente)}
+                            className="pysta-btn pysta-btn-gold"
+                            style={smallActionBtn}
+                          >
                             Editar
                           </button>
 
-                          <button onClick={() => handleCambiarEstado(cliente)} className="pysta-btn pysta-btn-light" style={smallActionBtn}>
+                          <button
+                            onClick={() => handleCambiarEstado(cliente)}
+                            className="pysta-btn pysta-btn-light"
+                            style={smallActionBtn}
+                          >
                             {cliente.is_active ? "Desactivar" : "Activar"}
                           </button>
 
-                          <button onClick={() => pedirEliminarCliente(cliente)} className="pysta-btn pysta-btn-danger" style={smallActionBtn}>
+                          <button
+                            onClick={() => pedirEliminarCliente(cliente)}
+                            className="pysta-btn pysta-btn-danger"
+                            style={smallActionBtn}
+                          >
                             Eliminar
                           </button>
                         </div>

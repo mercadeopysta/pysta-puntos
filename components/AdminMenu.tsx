@@ -1,6 +1,10 @@
 "use client"
 
+import { usePathname } from "next/navigation"
+
 export default function AdminMenu() {
+  const pathname = usePathname()
+
   const items = [
     { label: "Clientes", href: "/admin/clientes" },
     { label: "Facturas", href: "/admin/facturas" },
@@ -13,39 +17,42 @@ export default function AdminMenu() {
 
   return (
     <div
+      className="pysta-card"
       style={{
-        backgroundColor: "white",
-        borderRadius: "16px",
         padding: "18px",
-        boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
         marginBottom: "24px",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          gap: "10px",
-          flexWrap: "wrap",
-        }}
-      >
-        {items.map((item) => (
-          <a
-            key={item.href}
-            href={item.href}
-            style={{
-              backgroundColor: "#111",
-              color: "white",
-              textDecoration: "none",
-              padding: "10px 14px",
-              borderRadius: "9px",
-              fontSize: "14px",
-              fontWeight: "bold",
-              display: "inline-block",
-            }}
-          >
-            {item.label}
-          </a>
-        ))}
+      <div className="pysta-topbar" style={{ marginBottom: "14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <img src="/logo-pysta.png" alt="Pysta" style={{ width: "110px" }} />
+          <div>
+            <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>Panel administrativo</p>
+            <p style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#111" }}>
+              Puntos Pysta
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+        {items.map((item) => {
+          const activo = pathname === item.href
+
+          return (
+            <a
+              key={item.href}
+              href={item.href}
+              className={`pysta-btn ${activo ? "pysta-btn-gold" : "pysta-btn-light"}`}
+              style={{
+                padding: "10px 14px",
+                fontSize: "14px",
+              }}
+            >
+              {item.label}
+            </a>
+          )
+        })}
       </div>
     </div>
   )

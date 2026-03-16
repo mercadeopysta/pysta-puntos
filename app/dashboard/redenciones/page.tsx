@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
 import LogoutButton from "../../../components/LogoutButton"
 
@@ -15,8 +16,13 @@ type Redencion = {
 }
 
 type ProfileRow = {
+  id: string
   email: string
   advisor_name: string | null
+  full_name?: string | null
+  client_type?: string | null
+  is_active: boolean
+  is_approved: boolean
 }
 
 type GrupoRedencion = {
@@ -30,50 +36,85 @@ type GrupoRedencion = {
 }
 
 export default function RedencionesPage() {
+  const router = useRouter()
+
+  const [autorizado, setAutorizado] = useState(false)
   const [redenciones, setRedenciones] = useState<Redencion[]>([])
   const [cargando, setCargando] = useState(true)
   const [mensaje, setMensaje] = useState("")
   const [asesorNombre, setAsesorNombre] = useState("")
 
+  const cerrarSesionCliente = async () => {
+    await supabase.auth.signOut()
+    localStorage.removeItem("cliente_email")
+    localStorage.removeItem("cliente_name")
+    localStorage.removeItem("cliente_tipo")
+    router.replace("/login")
+  }
+
   useEffect(() => {
     const cargarRedenciones = async () => {
-      const email = localStorage.getItem("cliente_email")
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
 
-      if (!email) {
-        setMensaje("No se encontró el usuario logueado.")
-        setCargando(false)
-        return
-      }
+        if (sessionError || !session?.user) {
+          await cerrarSesionCliente()
+          return
+        }
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("email, advisor_name")
-        .eq("email", email)
-        .maybeSingle()
+        const user = session.user
 
-      if (profileData) {
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, email, advisor_name, full_name, client_type, is_active, is_approved")
+          .eq("id", user.id)
+          .maybeSingle()
+
+        if (profileError || !profileData) {
+          await cerrarSesionCliente()
+          return
+        }
+
         const perfil = profileData as ProfileRow
+
+        if (!perfil.is_active || !perfil.is_approved) {
+          await cerrarSesionCliente()
+          return
+        }
+
+        localStorage.setItem("cliente_email", perfil.email || "")
+        localStorage.setItem("cliente_name", perfil.full_name || "")
+        localStorage.setItem("cliente_tipo", perfil.client_type || "")
+
         setAsesorNombre(perfil.advisor_name || "")
-      }
+        setAutorizado(true)
 
-      const { data, error } = await supabase
-        .from("redemptions")
-        .select("id, reward_name, points_used, status, created_at, redemption_group_id, user_email")
-        .eq("user_email", email)
-        .order("created_at", { ascending: false })
+        const { data, error } = await supabase
+          .from("redemptions")
+          .select("id, reward_name, points_used, status, created_at, redemption_group_id, user_email")
+          .eq("user_email", perfil.email)
+          .order("created_at", { ascending: false })
 
-      if (error) {
-        setMensaje("Ocurrió un error al cargar las redenciones.")
-        setCargando(false)
+        if (error) {
+          setMensaje("Ocurrió un error al cargar las redenciones.")
+          setCargando(false)
+          return
+        }
+
+        setRedenciones((data as Redencion[]) || [])
+      } catch {
+        await cerrarSesionCliente()
         return
+      } finally {
+        setCargando(false)
       }
-
-      setRedenciones((data as Redencion[]) || [])
-      setCargando(false)
     }
 
     cargarRedenciones()
-  }, [])
+  }, [router])
 
   const grupos = useMemo(() => {
     const grouped = new Map<string, GrupoRedencion>()
@@ -135,6 +176,26 @@ export default function RedencionesPage() {
     return Object.entries(conteo).map(([nombre, cantidad]) => `${cantidad} x ${nombre}`)
   }
 
+  if (cargando) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "Arial, sans-serif",
+        }}
+      >
+        Cargando redenciones...
+      </main>
+    )
+  }
+
+  if (!autorizado) {
+    return null
+  }
+
   return (
     <main
       style={{
@@ -186,11 +247,7 @@ export default function RedencionesPage() {
           </div>
         )}
 
-        {cargando ? (
-          <div style={cardStyle}>
-            <p style={{ color: "#333" }}>Cargando redenciones...</p>
-          </div>
-        ) : mensaje ? (
+        {mensaje ? (
           <div style={cardStyle}>
             <p style={{ color: "#333" }}>{mensaje}</p>
           </div>
