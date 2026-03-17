@@ -160,202 +160,329 @@ export default function RegistroPage() {
     <main
       style={{
         minHeight: "100vh",
-        background: "#f5f5f5",
-        padding: "40px 20px",
+        background: "linear-gradient(180deg, #f5f5f5 0%, #ececec 100%)",
+        padding: "32px 20px",
         fontFamily: "Arial, sans-serif",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
       <div
         style={{
-          maxWidth: "760px",
-          margin: "0 auto",
-          background: "#fff",
-          borderRadius: "20px",
-          padding: "32px",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+          width: "100%",
+          maxWidth: "1180px",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: "22px",
+          alignItems: "stretch",
         }}
       >
-        <div style={{ display: "grid", gap: "8px", marginBottom: "22px" }}>
-          <span
-            style={{
-              display: "inline-flex",
-              width: "fit-content",
-              padding: "6px 10px",
-              borderRadius: "999px",
-              fontSize: "12px",
-              fontWeight: 700,
-              background: "rgba(212, 175, 55, 0.14)",
-              color: "#7a5b00",
-              border: "1px solid rgba(212, 175, 55, 0.24)",
-            }}
-          >
-            Crear cuenta
-          </span>
-
-          <h1 style={{ margin: 0, fontSize: "32px", color: "#111" }}>
-            Registro de cliente
-          </h1>
-
-          <p style={{ margin: 0, color: "#6b7280", lineHeight: 1.5 }}>
-            Registra tu cuenta para ingresar al programa de puntos. Tu acceso quedará pendiente de aprobación por el administrador.
-          </p>
-        </div>
-
-        <div
+        <section
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: "16px",
+            background: "linear-gradient(135deg, #111111 0%, #1f1f1f 100%)",
+            color: "white",
+            borderRadius: "28px",
+            padding: "38px",
+            boxShadow: "0 20px 50px rgba(0,0,0,0.18)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            minHeight: "700px",
           }}
         >
-          <input
-            className="campo-pysta"
-            placeholder="Nombre completo o razón social"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-          />
+          <div>
+            <div
+              style={{
+                width: "110px",
+                height: "110px",
+                borderRadius: "24px",
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                marginBottom: "24px",
+              }}
+            >
+              <img
+                src="/logo-pysta.png"
+                alt="Pysta"
+                style={{ maxWidth: "96px", maxHeight: "96px", objectFit: "contain" }}
+              />
+            </div>
 
-          <select
-            className="campo-pysta"
-            value={clientType}
-            onChange={(e) => setClientType(e.target.value)}
-          >
-            <option value="">Tipo de cliente</option>
-            <option value="Mayorista">Mayorista</option>
-            <option value="Distribuidor">Distribuidor</option>
-          </select>
+            <span style={darkBadge}>Programa de puntos Pysta</span>
 
-          <select
-            className="campo-pysta"
-            value={advisorName}
-            onChange={(e) => setAdvisorName(e.target.value)}
-            disabled={cargandoAsesores}
-          >
-            <option value="">
-              {cargandoAsesores ? "Cargando asesores..." : "Selecciona asesor"}
-            </option>
-            {asesores.map((asesor) => (
-              <option key={asesor.id} value={asesor.name}>
-                {asesor.name}
-              </option>
-            ))}
-          </select>
+            <h1
+              style={{
+                margin: "18px 0 0 0",
+                fontSize: "42px",
+                lineHeight: 1.08,
+                fontWeight: 800,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              Crea tu cuenta
+              <br />
+              y activa tus beneficios
+            </h1>
 
-          <select
-            className="campo-pysta"
-            value={documentType}
-            onChange={(e) => setDocumentType(e.target.value)}
-          >
-            <option value="">Tipo de documento</option>
-            <option value="CC">CC</option>
-            <option value="NIT">NIT</option>
-            <option value="OTRO">OTRO</option>
-          </select>
+            <p
+              style={{
+                marginTop: "18px",
+                color: "rgba(255,255,255,0.78)",
+                fontSize: "16px",
+                lineHeight: 1.6,
+                maxWidth: "520px",
+              }}
+            >
+              Registra tus datos, selecciona tu asesor y accede al programa de puntos Pysta.
+              Tu cuenta quedará pendiente de aprobación administrativa.
+            </p>
+          </div>
 
-          <input
-            className="campo-pysta"
-            placeholder="Número de documento"
-            value={documentNumber}
-            onChange={(e) => setDocumentNumber(e.target.value)}
-          />
+          <div style={{ display: "grid", gap: "12px", marginTop: "28px" }}>
+            <InfoMini texto="Sube facturas y acumula puntos" />
+            <InfoMini texto="Consulta premios disponibles según tu perfil" />
+            <InfoMini texto="Redime beneficios de forma simple y rápida" />
+          </div>
+        </section>
 
-          <input
-            className="campo-pysta"
-            placeholder="WhatsApp"
-            value={whatsapp}
-            onChange={(e) => setWhatsapp(e.target.value)}
-          />
+        <section
+          style={{
+            background: "#ffffff",
+            borderRadius: "28px",
+            padding: "38px",
+            boxShadow: "0 20px 50px rgba(0,0,0,0.10)",
+            minHeight: "700px",
+            border: "1px solid rgba(0,0,0,0.04)",
+          }}
+        >
+          <div style={{ marginBottom: "24px" }}>
+            <span style={lightBadge}>Registro clientes</span>
 
-          <input
-            className="campo-pysta"
-            type="email"
-            placeholder="Correo electrónico"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
+            <h2
+              style={{
+                margin: "16px 0 0 0",
+                fontSize: "34px",
+                color: "#111",
+                lineHeight: 1.1,
+              }}
+            >
+              Crear cuenta
+            </h2>
 
-          <input
-            className="campo-pysta"
-            type="password"
-            placeholder="Contraseña"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+            <p
+              style={{
+                margin: "12px 0 0 0",
+                color: "#6b7280",
+                lineHeight: 1.6,
+                fontSize: "15px",
+              }}
+            >
+              Completa tus datos para solicitar acceso al programa de puntos.
+            </p>
+          </div>
 
-          <input
-            className="campo-pysta"
-            type="password"
-            placeholder="Confirmar contraseña"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-          />
-        </div>
-
-        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "22px" }}>
-          <button
-            onClick={handleRegistro}
-            disabled={guardando}
-            style={{
-              background: "#111",
-              color: "#fff",
-              border: "none",
-              padding: "14px 22px",
-              borderRadius: "10px",
-              cursor: guardando ? "not-allowed" : "pointer",
-              opacity: guardando ? 0.7 : 1,
-              fontSize: "16px",
-            }}
-          >
-            {guardando ? "Guardando..." : "Crear cuenta"}
-          </button>
-
-          <Link
-            href="/login"
-            style={{
-              background: "#e9e9e9",
-              color: "#111",
-              textDecoration: "none",
-              padding: "14px 22px",
-              borderRadius: "10px",
-              display: "inline-block",
-            }}
-          >
-            Ir a iniciar sesión
-          </Link>
-        </div>
-
-        {mensaje && (
           <div
             style={{
-              marginTop: "18px",
-              background: "#eff6ff",
-              border: "1px solid #bfdbfe",
-              color: "#1d4ed8",
-              borderRadius: "14px",
-              padding: "14px 16px",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+              gap: "16px",
             }}
           >
-            {mensaje}
+            <Field label="Nombre completo o razón social">
+              <input className="campo-pysta" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            </Field>
+
+            <Field label="Tipo de cliente">
+              <select className="campo-pysta" value={clientType} onChange={(e) => setClientType(e.target.value)}>
+                <option value="">Selecciona tipo</option>
+                <option value="Mayorista">Mayorista</option>
+                <option value="Distribuidor">Distribuidor</option>
+              </select>
+            </Field>
+
+            <Field label="Asesor">
+              <select
+                className="campo-pysta"
+                value={advisorName}
+                onChange={(e) => setAdvisorName(e.target.value)}
+                disabled={cargandoAsesores}
+              >
+                <option value="">
+                  {cargandoAsesores ? "Cargando asesores..." : "Selecciona asesor"}
+                </option>
+                {asesores.map((asesor) => (
+                  <option key={asesor.id} value={asesor.name}>
+                    {asesor.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Tipo de documento">
+              <select className="campo-pysta" value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
+                <option value="">Selecciona tipo</option>
+                <option value="CC">CC</option>
+                <option value="NIT">NIT</option>
+                <option value="OTRO">OTRO</option>
+              </select>
+            </Field>
+
+            <Field label="Número de documento">
+              <input className="campo-pysta" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} />
+            </Field>
+
+            <Field label="WhatsApp">
+              <input className="campo-pysta" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
+            </Field>
+
+            <Field label="Correo electrónico">
+              <input className="campo-pysta" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </Field>
+
+            <Field label="Contraseña">
+              <input className="campo-pysta" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            </Field>
+
+            <Field label="Confirmar contraseña">
+              <input className="campo-pysta" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            </Field>
           </div>
-        )}
+
+          <div style={{ display: "grid", gap: "14px", marginTop: "24px" }}>
+            <button onClick={handleRegistro} disabled={guardando} style={primaryButton}>
+              {guardando ? "Guardando..." : "Crear cuenta"}
+            </button>
+
+            <Link href="/login" style={secondaryLink}>
+              Ya tengo cuenta
+            </Link>
+          </div>
+
+          {mensaje && (
+            <div style={messageBox}>
+              {mensaje}
+            </div>
+          )}
+        </section>
       </div>
 
-      <style>{`
-        .campo-pysta {
-          width: 100%;
-          padding: 14px;
-          border-radius: 10px;
-          border: 1px solid #d1d5db;
-          font-size: 16px;
-          color: #111;
-          background: #fff;
-          box-sizing: border-box;
-        }
-
-        .campo-pysta::placeholder {
-          color: #666;
-        }
-      `}</style>
+      <style>{inputStyles}</style>
     </main>
   )
 }
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label style={labelStyle}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+function InfoMini({ texto }: { texto: string }) {
+  return (
+    <div
+      style={{
+        background: "rgba(255,255,255,0.06)",
+        border: "1px solid rgba(255,255,255,0.10)",
+        borderRadius: "16px",
+        padding: "14px 16px",
+        color: "rgba(255,255,255,0.88)",
+        fontSize: "14px",
+        lineHeight: 1.5,
+      }}
+    >
+      {texto}
+    </div>
+  )
+}
+
+const darkBadge = {
+  display: "inline-flex",
+  padding: "7px 12px",
+  borderRadius: "999px",
+  fontSize: "12px",
+  fontWeight: 700 as const,
+  background: "rgba(212, 175, 55, 0.16)",
+  color: "#f0d77a",
+  border: "1px solid rgba(212, 175, 55, 0.24)",
+}
+
+const lightBadge = {
+  display: "inline-flex",
+  padding: "7px 12px",
+  borderRadius: "999px",
+  fontSize: "12px",
+  fontWeight: 700 as const,
+  background: "rgba(212, 175, 55, 0.14)",
+  color: "#7a5b00",
+  border: "1px solid rgba(212, 175, 55, 0.24)",
+}
+
+const labelStyle = {
+  display: "block",
+  marginBottom: "8px",
+  color: "#111",
+  fontWeight: "bold" as const,
+  fontSize: "14px",
+}
+
+const primaryButton = {
+  background: "#111",
+  color: "#fff",
+  border: "none",
+  padding: "15px 22px",
+  borderRadius: "14px",
+  cursor: "pointer",
+  fontSize: "16px",
+  fontWeight: 700 as const,
+}
+
+const secondaryLink = {
+  textAlign: "center" as const,
+  color: "#111",
+  textDecoration: "none",
+  fontWeight: 700,
+  fontSize: "15px",
+}
+
+const messageBox = {
+  marginTop: "20px",
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  color: "#1d4ed8",
+  borderRadius: "16px",
+  padding: "14px 16px",
+  fontSize: "14px",
+  lineHeight: 1.5,
+}
+
+const inputStyles = `
+  .campo-pysta {
+    width: 100%;
+    padding: 15px 16px;
+    border-radius: 14px;
+    border: 1px solid #d1d5db;
+    font-size: 16px;
+    color: #111;
+    background: #fff;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .campo-pysta:focus {
+    border-color: #d4af37;
+    box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.12);
+  }
+
+  .campo-pysta::placeholder {
+    color: #8a8a8a;
+  }
+`
