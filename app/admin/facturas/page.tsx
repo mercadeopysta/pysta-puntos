@@ -42,10 +42,15 @@ export default function AdminFacturasPage() {
   const [filtroNombre, setFiltroNombre] = useState("")
   const [filtroDocumento, setFiltroDocumento] = useState("")
   const [filtroEstado, setFiltroEstado] = useState("")
+  const [seleccionadas, setSeleccionadas] = useState<string[]>([])
+  const [procesandoMasivo, setProcesandoMasivo] = useState(false)
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [facturaAEliminar, setFacturaAEliminar] = useState<FacturaConCliente | null>(null)
   const [eliminando, setEliminando] = useState(false)
+
+  const [confirmMasivoOpen, setConfirmMasivoOpen] = useState(false)
+  const [accionMasivaPendiente, setAccionMasivaPendiente] = useState("")
 
   useEffect(() => {
     const adminLogueado = localStorage.getItem("admin_logged_in")
@@ -102,6 +107,7 @@ export default function AdminFacturasPage() {
     }))
 
     setFacturas(enriquecidas)
+    setSeleccionadas((prev) => prev.filter((id) => enriquecidas.some((f) => f.id === id)))
     setCargando(false)
   }
 
@@ -128,6 +134,100 @@ export default function AdminFacturasPage() {
     setTipoMensaje("success")
     setMensaje(`Factura actualizada a estado: ${traducirEstado(nuevoEstado)}`)
     cargarFacturas()
+  }
+
+  const cambiarEstadoMasivo = async (nuevoEstado: string) => {
+    setMensaje("")
+
+    if (seleccionadas.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("Selecciona al menos una factura.")
+      return
+    }
+
+    try {
+      setProcesandoMasivo(true)
+
+      const { error } = await supabase
+        .from("invoices")
+        .update({ status: nuevoEstado })
+        .in("id", seleccionadas)
+
+      if (error) {
+        setTipoMensaje("error")
+        setMensaje("Ocurrió un error al actualizar las facturas: " + error.message)
+        setProcesandoMasivo(false)
+        return
+      }
+
+      setTipoMensaje("success")
+      setMensaje(
+        `${seleccionadas.length} factura(s) actualizadas a estado: ${traducirEstado(nuevoEstado)}`
+      )
+      setSeleccionadas([])
+      await cargarFacturas()
+    } finally {
+      setProcesandoMasivo(false)
+    }
+  }
+
+  const eliminarFacturasMasivas = async () => {
+    setMensaje("")
+
+    if (seleccionadas.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("Selecciona al menos una factura.")
+      return
+    }
+
+    try {
+      setProcesandoMasivo(true)
+
+      const { error } = await supabase
+        .from("invoices")
+        .delete()
+        .in("id", seleccionadas)
+
+      if (error) {
+        setTipoMensaje("error")
+        setMensaje("Ocurrió un error al eliminar las facturas: " + error.message)
+        setProcesandoMasivo(false)
+        return
+      }
+
+      setTipoMensaje("success")
+      setMensaje(`${seleccionadas.length} factura(s) eliminadas correctamente.`)
+      setSeleccionadas([])
+      await cargarFacturas()
+    } finally {
+      setProcesandoMasivo(false)
+    }
+  }
+
+  const abrirConfirmacionMasiva = (accion: string) => {
+    if (seleccionadas.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("Selecciona al menos una factura.")
+      return
+    }
+
+    setAccionMasivaPendiente(accion)
+    setConfirmMasivoOpen(true)
+  }
+
+  const confirmarAccionMasiva = async () => {
+    const accion = accionMasivaPendiente
+    setConfirmMasivoOpen(false)
+    setAccionMasivaPendiente("")
+
+    if (!accion) return
+
+    if (accion === "delete") {
+      await eliminarFacturasMasivas()
+      return
+    }
+
+    await cambiarEstadoMasivo(accion)
   }
 
   const pedirEliminarFactura = (factura: FacturaConCliente) => {
@@ -162,6 +262,7 @@ export default function AdminFacturasPage() {
     setTipoMensaje("success")
     setMensaje("Factura eliminada correctamente.")
     await cargarFacturas()
+    setSeleccionadas((prev) => prev.filter((id) => id !== facturaAEliminar.id))
     setEliminando(false)
     setConfirmOpen(false)
     setFacturaAEliminar(null)
@@ -213,10 +314,55 @@ export default function AdminFacturasPage() {
     })
   }, [facturas, filtroNombre, filtroDocumento, filtroEstado])
 
+  const idsFiltrados = facturasFiltradas.map((factura) => factura.id)
+  const todasVisiblesSeleccionadas =
+    idsFiltrados.length > 0 && idsFiltrados.every((id) => seleccionadas.includes(id))
+
+  const toggleSeleccion = (id: string) => {
+    setSeleccionadas((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    )
+  }
+
+  const toggleSeleccionarTodasVisibles = () => {
+    if (todasVisiblesSeleccionadas) {
+      setSeleccionadas((prev) => prev.filter((id) => !idsFiltrados.includes(id)))
+      return
+    }
+
+    setSeleccionadas((prev) => Array.from(new Set([...prev, ...idsFiltrados])))
+  }
+
   const totalAprobadas = facturas.filter((f) => f.status === "approved").length
   const totalPendientes = facturas.filter((f) => f.status === "pending").length
   const totalRechazadas = facturas.filter((f) => f.status === "rejected").length
   const valorTotal = facturas.reduce((acc, f) => acc + Number(f.amount_without_vat || 0), 0)
+
+  const refrescarPantalla = () => {
+    cargarFacturas()
+  }
+
+  const textoConfirmacionMasiva =
+    accionMasivaPendiente === "rejected"
+      ? `¿Seguro que deseas rechazar ${seleccionadas.length} factura(s)?`
+      : accionMasivaPendiente === "approved"
+      ? `¿Seguro que deseas aprobar ${seleccionadas.length} factura(s)?`
+      : accionMasivaPendiente === "pending"
+      ? `¿Seguro que deseas poner en pendiente ${seleccionadas.length} factura(s)?`
+      : accionMasivaPendiente === "delete"
+      ? `¿Seguro que deseas eliminar ${seleccionadas.length} factura(s)? Esta acción no se puede deshacer.`
+      : ""
+
+  const textoBotonConfirmacionMasiva =
+    accionMasivaPendiente === "rejected"
+      ? "Sí, rechazar"
+      : accionMasivaPendiente === "approved"
+      ? "Sí, aprobar"
+      : accionMasivaPendiente === "pending"
+      ? "Sí, poner pendientes"
+      : accionMasivaPendiente === "delete"
+      ? "Sí, eliminar"
+      : "Confirmar"
 
   if (!autorizado) {
     return (
@@ -251,7 +397,16 @@ export default function AdminFacturasPage() {
                 </p>
               </div>
 
-              <AdminLogoutButton />
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button
+                  onClick={refrescarPantalla}
+                  className="pysta-btn pysta-btn-light"
+                >
+                  Refrescar
+                </button>
+
+                <AdminLogoutButton />
+              </div>
             </div>
           </section>
 
@@ -323,16 +478,79 @@ export default function AdminFacturasPage() {
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                setFiltroNombre("")
-                setFiltroDocumento("")
-                setFiltroEstado("")
-              }}
-              className="pysta-btn pysta-btn-light"
-            >
-              Limpiar filtros
-            </button>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                onClick={() => {
+                  setFiltroNombre("")
+                  setFiltroDocumento("")
+                  setFiltroEstado("")
+                }}
+                className="pysta-btn pysta-btn-light"
+              >
+                Limpiar filtros
+              </button>
+
+              <button
+                onClick={toggleSeleccionarTodasVisibles}
+                className="pysta-btn pysta-btn-light"
+              >
+                {todasVisiblesSeleccionadas ? "Quitar visibles" : "Seleccionar visibles"}
+              </button>
+
+              <button
+                onClick={() => setSeleccionadas([])}
+                className="pysta-btn pysta-btn-light"
+              >
+                Limpiar selección
+              </button>
+            </div>
+          </section>
+
+          <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
+            <div style={{ display: "grid", gap: "8px", marginBottom: "16px" }}>
+              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Acciones masivas</h2>
+              <p style={{ margin: 0, color: "#6b7280" }}>
+                Facturas seleccionadas: {seleccionadas.length}
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                onClick={() => abrirConfirmacionMasiva("approved")}
+                className="pysta-btn pysta-btn-gold"
+                disabled={procesandoMasivo}
+                style={{ opacity: procesandoMasivo ? 0.7 : 1 }}
+              >
+                Aprobar seleccionadas
+              </button>
+
+              <button
+                onClick={() => abrirConfirmacionMasiva("rejected")}
+                className="pysta-btn pysta-btn-light"
+                disabled={procesandoMasivo}
+                style={{ opacity: procesandoMasivo ? 0.7 : 1 }}
+              >
+                Rechazar seleccionadas
+              </button>
+
+              <button
+                onClick={() => abrirConfirmacionMasiva("pending")}
+                className="pysta-btn pysta-btn-dark"
+                disabled={procesandoMasivo}
+                style={{ opacity: procesandoMasivo ? 0.7 : 1 }}
+              >
+                Poner pendientes
+              </button>
+
+              <button
+                onClick={() => abrirConfirmacionMasiva("delete")}
+                className="pysta-btn pysta-btn-danger"
+                disabled={procesandoMasivo}
+                style={{ opacity: procesandoMasivo ? 0.7 : 1 }}
+              >
+                Eliminar seleccionadas
+              </button>
+            </div>
           </section>
 
           {mensaje && (
@@ -362,133 +580,150 @@ export default function AdminFacturasPage() {
             ) : (
               <div style={{ padding: "18px" }}>
                 <div style={{ display: "grid", gap: "14px" }}>
-                  {facturasFiltradas.map((factura) => (
-                    <article
-                      key={factura.id}
-                      style={{
-                        background: "#fff",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "20px",
-                        padding: "20px",
-                        boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
-                      }}
-                    >
-                      <div
+                  {facturasFiltradas.map((factura) => {
+                    const seleccionada = seleccionadas.includes(factura.id)
+
+                    return (
+                      <article
+                        key={factura.id}
                         style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: "14px",
-                          flexWrap: "wrap",
-                          marginBottom: "14px",
-                          alignItems: "flex-start",
+                          background: seleccionada ? "#fffdf5" : "#fff",
+                          border: seleccionada ? "1px solid #f3d37a" : "1px solid #e5e7eb",
+                          borderRadius: "20px",
+                          padding: "20px",
+                          boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
                         }}
                       >
-                        <div style={{ display: "grid", gap: "8px" }}>
-                          <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
-                            {factura.client_name}
-                          </h3>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: "14px",
+                            flexWrap: "wrap",
+                            marginBottom: "14px",
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                            <input
+                              type="checkbox"
+                              checked={seleccionada}
+                              onChange={() => toggleSeleccion(factura.id)}
+                              style={{ width: "18px", height: "18px", marginTop: "6px" }}
+                            />
 
-                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                            <span style={miniBadge}>
-                              Factura #{factura.invoice_number}
-                            </span>
+                            <div style={{ display: "grid", gap: "8px" }}>
+                              <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
+                                {factura.client_name}
+                              </h3>
 
-                            <span
-                              style={{
-                                ...miniBadge,
-                                ...estadoBadge(factura.status),
-                              }}
-                            >
-                              {traducirEstado(factura.status)}
-                            </span>
+                              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                                <span style={miniBadge}>
+                                  Factura #{factura.invoice_number}
+                                </span>
+
+                                <span
+                                  style={{
+                                    ...miniBadge,
+                                    ...estadoBadge(factura.status),
+                                  }}
+                                >
+                                  {traducirEstado(factura.status)}
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="pysta-actions">
-                          {factura.file_url ? (
-                            <a
-                              href={factura.file_url}
-                              target="_blank"
-                              rel="noreferrer"
+                          <div className="pysta-actions">
+                            {factura.file_url ? (
+                              <a
+                                href={factura.file_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="pysta-btn pysta-btn-light"
+                                style={smallActionBtn}
+                              >
+                                Ver archivo
+                              </a>
+                            ) : (
+                              <span style={smallMutedBox}>Sin archivo</span>
+                            )}
+
+                            <button
+                              onClick={() => cambiarEstado(factura.id, "approved")}
+                              className="pysta-btn pysta-btn-gold"
+                              style={smallActionBtn}
+                            >
+                              Aprobar
+                            </button>
+
+                            <button
+                              onClick={() => cambiarEstado(factura.id, "rejected")}
                               className="pysta-btn pysta-btn-light"
                               style={smallActionBtn}
                             >
-                              Ver archivo
-                            </a>
-                          ) : (
-                            <span style={smallMutedBox}>Sin archivo</span>
-                          )}
+                              Rechazar
+                            </button>
 
-                          <button
-                            onClick={() => cambiarEstado(factura.id, "approved")}
-                            className="pysta-btn pysta-btn-gold"
-                            style={smallActionBtn}
-                          >
-                            Aprobar
-                          </button>
+                            <button
+                              onClick={() => cambiarEstado(factura.id, "pending")}
+                              className="pysta-btn pysta-btn-dark"
+                              style={smallActionBtn}
+                            >
+                              Pendiente
+                            </button>
 
-                          <button
-                            onClick={() => cambiarEstado(factura.id, "rejected")}
-                            className="pysta-btn pysta-btn-light"
-                            style={smallActionBtn}
-                          >
-                            Rechazar
-                          </button>
-
-                          <button
-                            onClick={() => cambiarEstado(factura.id, "pending")}
-                            className="pysta-btn pysta-btn-dark"
-                            style={smallActionBtn}
-                          >
-                            Pendiente
-                          </button>
-
-                          <button
-                            onClick={() => pedirEliminarFactura(factura)}
-                            className="pysta-btn pysta-btn-danger"
-                            style={smallActionBtn}
-                          >
-                            Eliminar
-                          </button>
+                            <button
+                              onClick={() => pedirEliminarFactura(factura)}
+                              className="pysta-btn pysta-btn-danger"
+                              style={smallActionBtn}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
                         </div>
-                      </div>
 
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-                          gap: "12px",
-                        }}
-                      >
-                        <InfoItem label="Documento" value={factura.document_number || "-"} />
-                        <InfoItem label="Correo" value={factura.user_email} />
-                        <InfoItem label="Fecha factura" value={factura.invoice_date || "-"} />
-                        <InfoItem
-                          label="Valor sin IVA"
-                          value={`$${Number(factura.amount_without_vat).toLocaleString("es-CO")}`}
-                        />
-                      </div>
-
-                      {factura.notes && (
                         <div
                           style={{
-                            marginTop: "12px",
-                            background: "#f9fafb",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: "14px",
-                            padding: "12px 14px",
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                            gap: "12px",
                           }}
                         >
-                          <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
-                            Observaciones
-                          </p>
-                          <p style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>
-                            {factura.notes}
-                          </p>
+                          <InfoItem label="Documento" value={factura.document_number || "-"} />
+                          <InfoItem label="Correo" value={factura.user_email} />
+                          <InfoItem label="Fecha factura" value={factura.invoice_date || "-"} />
+                          <InfoItem
+                            label="Valor sin IVA"
+                            value={`$${Number(factura.amount_without_vat).toLocaleString("es-CO")}`}
+                          />
+                          <InfoItem
+                            label="Archivo"
+                            value={factura.file_name || "Archivo subido"}
+                          />
                         </div>
-                      )}
-                    </article>
-                  ))}
+
+                        {factura.notes && (
+                          <div
+                            style={{
+                              marginTop: "12px",
+                              background: "#f9fafb",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: "14px",
+                              padding: "12px 14px",
+                            }}
+                          >
+                            <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
+                              Observaciones
+                            </p>
+                            <p style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>
+                              {factura.notes}
+                            </p>
+                          </div>
+                        )}
+                      </article>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -510,6 +745,22 @@ export default function AdminFacturasPage() {
         loading={eliminando}
         onCancel={cerrarModalEliminar}
         onConfirm={confirmarEliminarFactura}
+      />
+
+      <ConfirmModal
+        open={confirmMasivoOpen}
+        title="Confirmar acción masiva"
+        message={textoConfirmacionMasiva}
+        confirmText={textoBotonConfirmacionMasiva}
+        cancelText="Cancelar"
+        danger={accionMasivaPendiente === "rejected" || accionMasivaPendiente === "delete"}
+        loading={procesandoMasivo}
+        onCancel={() => {
+          if (procesandoMasivo) return
+          setConfirmMasivoOpen(false)
+          setAccionMasivaPendiente("")
+        }}
+        onConfirm={confirmarAccionMasiva}
       />
     </>
   )
