@@ -12,6 +12,8 @@ type Factura = {
   invoice_date: string
   amount_without_vat: number
   status: string
+  file_url?: string | null
+  file_name?: string | null
 }
 
 export default function MisFacturasPage() {
@@ -33,9 +35,6 @@ export default function MisFacturasPage() {
 
   const cargarFacturas = async () => {
     try {
-      setCargando(true)
-      setMensaje("")
-
       const sessionResponse = await supabase.auth.getSession()
       const session = sessionResponse.data.session
       const sessionError = sessionResponse.error
@@ -72,7 +71,7 @@ export default function MisFacturasPage() {
 
       const { data, error } = await supabase
         .from("invoices")
-        .select("id, invoice_number, invoice_date, amount_without_vat, status")
+        .select("id, invoice_number, invoice_date, amount_without_vat, status, file_url, file_name")
         .eq("user_email", profile.email)
         .order("created_at", { ascending: false })
 
@@ -103,7 +102,7 @@ export default function MisFacturasPage() {
 
   const descripcionEstado = (estado: string) => {
     if (estado === "approved") return "Tu factura ya fue validada por administración."
-    if (estado === "rejected") return "Tu factura fue rechazada y puede requerir una nueva carga."
+    if (estado === "rejected") return "Tu factura fue rechazada. Puedes reemplazarla fácilmente desde aquí."
     if (estado === "pending") return "Tu factura está pendiente de aprobación. Puedes revisar su estado aquí."
     return "Consulta el estado actual de tu factura."
   }
@@ -162,7 +161,7 @@ export default function MisFacturasPage() {
       <InfoPopup
         storageKey="popup-mis-facturas"
         title="Estado de tus facturas"
-        message="Cuando registres una factura, esta puede quedar pendiente de aprobación mientras es validada por administración. Puedes revisar aquí el estado actualizado de cada una."
+        message="Cuando registres una factura, esta puede quedar pendiente de aprobación mientras es validada por administración. Si una factura es rechazada, puedes reemplazarla desde esta misma pantalla."
       />
 
       <main
@@ -270,45 +269,6 @@ export default function MisFacturasPage() {
 
           <section
             style={{
-              background: "#fff",
-              borderRadius: "24px",
-              padding: "22px",
-              boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
-              border: "1px solid rgba(0,0,0,0.04)",
-              marginBottom: "22px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                gap: "12px",
-                alignItems: "flex-start",
-                flexWrap: "wrap",
-              }}
-            >
-              <span
-                style={{
-                  display: "inline-flex",
-                  padding: "6px 10px",
-                  borderRadius: "999px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  background: "rgba(212, 175, 55, 0.14)",
-                  color: "#7a5b00",
-                  border: "1px solid rgba(212, 175, 55, 0.24)",
-                }}
-              >
-                Información importante
-              </span>
-
-              <p style={{ margin: 0, color: "#111", lineHeight: 1.6, fontSize: "15px" }}>
-                Las facturas nuevas pueden quedar pendientes de aprobación mientras son revisadas por administración. Aquí puedes consultar su estado actualizado.
-              </p>
-            </div>
-          </section>
-
-          <section
-            style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
               gap: "16px",
@@ -333,14 +293,12 @@ export default function MisFacturasPage() {
             <ResumenCard
               titulo="Facturas rechazadas"
               valor={String(facturas.filter((f) => f.status === "rejected").length)}
-              descripcion="Requieren revisión o nueva carga"
+              descripcion="Puedes reemplazarlas"
             />
           </section>
 
           {mensaje ? (
-            <section style={messageCardStyle}>
-              {mensaje}
-            </section>
+            <section style={messageCardStyle}>{mensaje}</section>
           ) : facturas.length === 0 ? (
             <section style={emptyCardStyle}>
               <h2 style={{ margin: 0, fontSize: "24px", color: "#111" }}>Aún no has registrado facturas</h2>
@@ -355,12 +313,7 @@ export default function MisFacturasPage() {
               </div>
             </section>
           ) : (
-            <section
-              style={{
-                display: "grid",
-                gap: "16px",
-              }}
-            >
+            <section style={{ display: "grid", gap: "16px" }}>
               {facturas.map((factura) => (
                 <article
                   key={factura.id}
@@ -411,22 +364,35 @@ export default function MisFacturasPage() {
                       gap: "14px",
                     }}
                   >
-                    <InfoItem
-                      label="Fecha"
-                      value={factura.invoice_date}
-                    />
+                    <InfoItem label="Fecha" value={factura.invoice_date} />
                     <InfoItem
                       label="Valor sin IVA"
                       value={`$${Number(factura.amount_without_vat).toLocaleString("es-CO")}`}
                     />
-                    <InfoItem
-                      label="Estado actual"
-                      value={traducirEstado(factura.status)}
-                    />
-                    <InfoItem
-                      label="Detalle"
-                      value={descripcionEstado(factura.status)}
-                    />
+                    <InfoItem label="Estado actual" value={traducirEstado(factura.status)} />
+                    <InfoItem label="Detalle" value={descripcionEstado(factura.status)} />
+                  </div>
+
+                  <div style={{ marginTop: "16px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    {factura.file_url ? (
+                      <a
+                        href={factura.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={buttonLight}
+                      >
+                        Ver archivo
+                      </a>
+                    ) : null}
+
+                    {factura.status === "rejected" ? (
+                      <a
+                        href={`/dashboard/facturas/nueva?edit=${factura.id}`}
+                        style={buttonGold}
+                      >
+                        Reemplazar factura rechazada
+                      </a>
+                    ) : null}
                   </div>
                 </article>
               ))}
@@ -523,6 +489,16 @@ const buttonDark = {
 
 const buttonGold = {
   backgroundColor: "#d4af37",
+  color: "#111",
+  textDecoration: "none",
+  padding: "14px 24px",
+  borderRadius: "14px",
+  display: "inline-block",
+  fontWeight: "bold" as const,
+}
+
+const buttonLight = {
+  backgroundColor: "#e9e9e9",
   color: "#111",
   textDecoration: "none",
   padding: "14px 24px",

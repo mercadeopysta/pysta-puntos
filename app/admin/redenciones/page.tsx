@@ -3,456 +3,162 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
-import AdminMenu from "../../../components/AdminMenu"
-import AdminLogoutButton from "../../../components/AdminLogoutButton"
-import ConfirmModal from "../../../components/ConfirmModal"
-import AlertMessage from "../../../components/AlertMessage"
+import LogoutButton from "../../../components/LogoutButton"
+import InfoPopup from "../../../components/InfoPopup"
 
 type Redencion = {
   id: string
-  user_email: string
-  reward_id: string | null
   reward_name: string
   points_used: number
   status: string
   created_at: string
   redemption_group_id: string | null
+  user_email: string
 }
 
 type ProfileRow = {
-  email: string
-  full_name: string
-  document_number?: string
-  advisor_name?: string | null
-}
-
-type GrupoItem = {
   id: string
-  reward_id: string | null
-  reward_name: string
-  points_used: number
-  status: string
+  email: string
+  advisor_name: string | null
+  full_name?: string | null
+  client_type?: string | null
+  is_active: boolean
+  is_approved: boolean
 }
 
 type GrupoRedencion = {
   key: string
   group_id: string
-  user_email: string
-  client_name: string
-  document_number: string
-  advisor_name: string
   date_label: string
   raw_date: string
-  date_only: string
-  items: GrupoItem[]
+  reward_names: string[]
   points_total: number
   status: string
-  ids: string[]
+  item_count: number
 }
 
-export default function AdminRedencionesPage() {
+export default function RedencionesPage() {
   const router = useRouter()
 
   const [autorizado, setAutorizado] = useState(false)
   const [redenciones, setRedenciones] = useState<Redencion[]>([])
-  const [profilesMap, setProfilesMap] = useState<
-    Record<string, { full_name: string; document_number: string; advisor_name: string }>
-  >({})
   const [cargando, setCargando] = useState(true)
   const [mensaje, setMensaje] = useState("")
-  const [tipoMensaje, setTipoMensaje] = useState<"success" | "error" | "warning" | "info">("info")
+  const [asesorNombre, setAsesorNombre] = useState("")
+  const [nombreCliente, setNombreCliente] = useState("")
 
-  const [filtroCliente, setFiltroCliente] = useState("")
-  const [filtroEstado, setFiltroEstado] = useState("")
-  const [filtroFecha, setFiltroFecha] = useState("")
-
-  const [seleccionadas, setSeleccionadas] = useState<string[]>([])
-  const [procesandoMasivo, setProcesandoMasivo] = useState(false)
-
-  const [confirmOpen, setConfirmOpen] = useState(false)
-  const [grupoAEliminar, setGrupoAEliminar] = useState<GrupoRedencion | null>(null)
-  const [eliminando, setEliminando] = useState(false)
-
-  const [confirmMasivoOpen, setConfirmMasivoOpen] = useState(false)
-  const [accionMasivaPendiente, setAccionMasivaPendiente] = useState("")
-
-  useEffect(() => {
-    const adminLogueado = localStorage.getItem("admin_logged_in")
-
-    if (adminLogueado !== "true") {
-      router.push("/admin/login")
-      return
-    }
-
-    setAutorizado(true)
-  }, [router])
+  const cerrarSesionCliente = async () => {
+    await supabase.auth.signOut()
+    localStorage.removeItem("cliente_email")
+    localStorage.removeItem("cliente_name")
+    localStorage.removeItem("cliente_tipo")
+    router.replace("/login")
+  }
 
   const cargarRedenciones = async () => {
-    setCargando(true)
-    setMensaje("")
+    try {
+      const sessionResponse = await supabase.auth.getSession()
+      const session = sessionResponse.data.session
+      const sessionError = sessionResponse.error
 
-    const { data: redencionesData, error: redencionesError } = await supabase
-      .from("redemptions")
-      .select("id, user_email, reward_id, reward_name, points_used, status, created_at, redemption_group_id")
-      .order("created_at", { ascending: false })
-
-    if (redencionesError) {
-      setTipoMensaje("error")
-      setMensaje("Ocurrió un error al cargar las redenciones.")
-      setCargando(false)
-      return
-    }
-
-    const redencionesRows = (redencionesData as Redencion[]) || []
-    setRedenciones(redencionesRows)
-
-    const emails = Array.from(new Set(redencionesRows.map((r) => r.user_email).filter(Boolean)))
-
-    if (emails.length > 0) {
-      const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("email, full_name, document_number, advisor_name")
-        .in("email", emails)
-
-      if (profilesData) {
-        const map: Record<string, { full_name: string; document_number: string; advisor_name: string }> = {}
-        ;(profilesData as ProfileRow[]).forEach((profile) => {
-          map[profile.email] = {
-            full_name: profile.full_name || profile.email,
-            document_number: profile.document_number || "",
-            advisor_name: profile.advisor_name || "",
-          }
-        })
-        setProfilesMap(map)
+      if (sessionError || !session?.user) {
+        await cerrarSesionCliente()
+        return
       }
-    }
 
-    setCargando(false)
+      const user = session.user
+
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, email, advisor_name, full_name, client_type, is_active, is_approved")
+        .eq("id", user.id)
+        .maybeSingle()
+
+      if (profileError || !profileData) {
+        await cerrarSesionCliente()
+        return
+      }
+
+      const perfil = profileData as ProfileRow
+
+      if (!perfil.is_active || !perfil.is_approved) {
+        await cerrarSesionCliente()
+        return
+      }
+
+      localStorage.setItem("cliente_email", perfil.email || "")
+      localStorage.setItem("cliente_name", perfil.full_name || "")
+      localStorage.setItem("cliente_tipo", perfil.client_type || "")
+
+      setNombreCliente(perfil.full_name || "")
+      setAsesorNombre(perfil.advisor_name || "")
+      setAutorizado(true)
+
+      const { data, error } = await supabase
+        .from("redemptions")
+        .select("id, reward_name, points_used, status, created_at, redemption_group_id, user_email")
+        .eq("user_email", perfil.email)
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        setMensaje("Ocurrió un error al cargar las redenciones.")
+        return
+      }
+
+      setRedenciones((data as Redencion[]) || [])
+    } catch {
+      await cerrarSesionCliente()
+      return
+    } finally {
+      setCargando(false)
+    }
   }
 
   useEffect(() => {
-    if (autorizado) {
-      cargarRedenciones()
-    }
-  }, [autorizado])
+    cargarRedenciones()
+  }, [router])
 
   const grupos = useMemo(() => {
     const grouped = new Map<string, GrupoRedencion>()
 
     redenciones.forEach((redencion) => {
       const date = new Date(redencion.created_at)
-      const dateOnly = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+      const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
         date.getDate()
       ).padStart(2, "0")}`
 
       const groupId =
         redencion.redemption_group_id && redencion.redemption_group_id.trim() !== ""
           ? redencion.redemption_group_id
-          : `${redencion.user_email}__${dateOnly}__legacy`
-
-      const clientName = profilesMap[redencion.user_email]?.full_name || redencion.user_email
-      const documentNumber = profilesMap[redencion.user_email]?.document_number || ""
-      const advisorName = profilesMap[redencion.user_email]?.advisor_name || ""
+          : `${redencion.user_email}__${dateKey}__legacy`
 
       if (!grouped.has(groupId)) {
         grouped.set(groupId, {
           key: groupId,
           group_id: groupId,
-          user_email: redencion.user_email,
-          client_name: clientName,
-          document_number: documentNumber,
-          advisor_name: advisorName,
           date_label: date.toLocaleDateString("es-CO"),
           raw_date: date.toISOString(),
-          date_only: dateOnly,
-          items: [],
+          reward_names: [],
           points_total: 0,
           status: redencion.status,
-          ids: [],
+          item_count: 0,
         })
       }
 
       const current = grouped.get(groupId)!
-      current.items.push({
-        id: redencion.id,
-        reward_id: redencion.reward_id,
-        reward_name: redencion.reward_name,
-        points_used: Number(redencion.points_used || 0),
-        status: redencion.status,
-      })
+      current.reward_names.push(redencion.reward_name)
       current.points_total += Number(redencion.points_used || 0)
-      current.ids.push(redencion.id)
+      current.item_count += 1
 
       if (current.status !== redencion.status) {
         current.status = "mixed"
       }
     })
 
-    return Array.from(grouped.values()).sort((a, b) => b.raw_date.localeCompare(a.raw_date))
-  }, [redenciones, profilesMap])
-
-  const gruposFiltrados = useMemo(() => {
-    const cliente = filtroCliente.trim().toLowerCase()
-    const estado = filtroEstado.trim().toLowerCase()
-    const fecha = filtroFecha.trim()
-
-    return grupos.filter((grupo) => {
-      const coincideCliente =
-        !cliente ||
-        grupo.client_name.toLowerCase().includes(cliente) ||
-        grupo.user_email.toLowerCase().includes(cliente) ||
-        (grupo.document_number || "").toLowerCase().includes(cliente) ||
-        (grupo.advisor_name || "").toLowerCase().includes(cliente)
-
-      const coincideEstado = !estado || grupo.status.toLowerCase() === estado
-      const coincideFecha = !fecha || grupo.date_only === fecha
-
-      return coincideCliente && coincideEstado && coincideFecha
-    })
-  }, [grupos, filtroCliente, filtroEstado, filtroFecha])
-
-  const devolverStockDeItems = async (items: GrupoItem[]) => {
-    const itemsNoCancelados = items.filter((item) => item.status !== "cancelled")
-    const conteoPorPremio: Record<string, number> = {}
-
-    for (const item of itemsNoCancelados) {
-      if (item.reward_id) {
-        conteoPorPremio[item.reward_id] = (conteoPorPremio[item.reward_id] || 0) + 1
-      }
-    }
-
-    for (const rewardId of Object.keys(conteoPorPremio)) {
-      const cantidadADevolver = conteoPorPremio[rewardId]
-
-      const { data: rewardData, error: rewardError } = await supabase
-        .from("rewards")
-        .select("id, stock")
-        .eq("id", rewardId)
-        .single()
-
-      if (rewardError || !rewardData) {
-        throw new Error("No se pudo devolver el stock de uno de los premios.")
-      }
-
-      const stockActual = Number(rewardData.stock || 0)
-
-      const { error: stockUpdateError } = await supabase
-        .from("rewards")
-        .update({ stock: stockActual + cantidadADevolver })
-        .eq("id", rewardId)
-
-      if (stockUpdateError) {
-        throw new Error("Ocurrió un error al devolver el stock del premio.")
-      }
-    }
-  }
-
-  const cambiarEstadoGrupo = async (grupo: GrupoRedencion, nuevoEstado: string) => {
-    setMensaje("")
-
-    if (nuevoEstado === "cancelled") {
-      try {
-        const itemsNoCancelados = grupo.items.filter((item) => item.status !== "cancelled")
-
-        if (itemsNoCancelados.length === 0) {
-          setTipoMensaje("info")
-          setMensaje("Este grupo ya estaba cancelado.")
-          return
-        }
-
-        await devolverStockDeItems(itemsNoCancelados)
-
-        const idsACancelar = itemsNoCancelados.map((item) => item.id)
-
-        const { error } = await supabase
-          .from("redemptions")
-          .update({ status: "cancelled" })
-          .in("id", idsACancelar)
-
-        if (error) {
-          setTipoMensaje("error")
-          setMensaje("Ocurrió un error al cancelar la redención: " + error.message)
-          return
-        }
-
-        setTipoMensaje("success")
-        setMensaje("Redención cancelada correctamente. Se devolvieron stock y puntos.")
-        cargarRedenciones()
-        return
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Error al cancelar."
-        setTipoMensaje("error")
-        setMensaje(errorMessage)
-        return
-      }
-    }
-
-    const { error } = await supabase
-      .from("redemptions")
-      .update({ status: nuevoEstado })
-      .in("id", grupo.ids)
-
-    if (error) {
-      setTipoMensaje("error")
-      setMensaje("Ocurrió un error al actualizar la redención: " + error.message)
-      return
-    }
-
-    setTipoMensaje("success")
-    setMensaje(`Redenciones actualizadas a estado: ${traducirEstado(nuevoEstado)}`)
-    cargarRedenciones()
-  }
-
-  const cambiarEstadoMasivo = async (nuevoEstado: string) => {
-    setMensaje("")
-
-    if (seleccionadas.length === 0) {
-      setTipoMensaje("warning")
-      setMensaje("Selecciona al menos una solicitud.")
-      return
-    }
-
-    const gruposSeleccionados = gruposFiltrados.filter((grupo) => seleccionadas.includes(grupo.key))
-
-    try {
-      setProcesandoMasivo(true)
-
-      if (nuevoEstado === "cancelled") {
-        for (const grupo of gruposSeleccionados) {
-          const itemsNoCancelados = grupo.items.filter((item) => item.status !== "cancelled")
-
-          if (itemsNoCancelados.length === 0) {
-            continue
-          }
-
-          await devolverStockDeItems(itemsNoCancelados)
-
-          const idsACancelar = itemsNoCancelados.map((item) => item.id)
-
-          const { error } = await supabase
-            .from("redemptions")
-            .update({ status: "cancelled" })
-            .in("id", idsACancelar)
-
-          if (error) {
-            setTipoMensaje("error")
-            setMensaje("Ocurrió un error al cancelar una o varias solicitudes: " + error.message)
-            setProcesandoMasivo(false)
-            return
-          }
-        }
-
-        setTipoMensaje("success")
-        setMensaje(`Se cancelaron ${gruposSeleccionados.length} solicitud(es) correctamente.`)
-        setSeleccionadas([])
-        await cargarRedenciones()
-        setProcesandoMasivo(false)
-        return
-      }
-
-      const idsActualizar = gruposSeleccionados.flatMap((grupo) => grupo.ids)
-
-      if (idsActualizar.length === 0) {
-        setTipoMensaje("warning")
-        setMensaje("No se encontraron redenciones para actualizar.")
-        setProcesandoMasivo(false)
-        return
-      }
-
-      const { error } = await supabase
-        .from("redemptions")
-        .update({ status: nuevoEstado })
-        .in("id", idsActualizar)
-
-      if (error) {
-        setTipoMensaje("error")
-        setMensaje("Ocurrió un error al actualizar las solicitudes: " + error.message)
-        setProcesandoMasivo(false)
-        return
-      }
-
-      setTipoMensaje("success")
-      setMensaje(
-        `${gruposSeleccionados.length} solicitud(es) actualizadas a estado: ${traducirEstado(nuevoEstado)}`
-      )
-      setSeleccionadas([])
-      await cargarRedenciones()
-    } finally {
-      setProcesandoMasivo(false)
-    }
-  }
-
-  const abrirConfirmacionMasiva = (accion: string) => {
-    if (seleccionadas.length === 0) {
-      setTipoMensaje("warning")
-      setMensaje("Selecciona al menos una solicitud.")
-      return
-    }
-
-    setAccionMasivaPendiente(accion)
-    setConfirmMasivoOpen(true)
-  }
-
-  const confirmarAccionMasiva = async () => {
-    const accion = accionMasivaPendiente
-    setConfirmMasivoOpen(false)
-    setAccionMasivaPendiente("")
-
-    if (!accion) return
-
-    await cambiarEstadoMasivo(accion)
-  }
-
-  const pedirEliminarGrupo = (grupo: GrupoRedencion) => {
-    setGrupoAEliminar(grupo)
-    setConfirmOpen(true)
-  }
-
-  const cerrarModalEliminar = () => {
-    if (eliminando) return
-    setConfirmOpen(false)
-    setGrupoAEliminar(null)
-  }
-
-  const confirmarEliminarGrupo = async () => {
-    if (!grupoAEliminar) return
-
-    setMensaje("")
-    setEliminando(true)
-
-    try {
-      const itemsNoCancelados = grupoAEliminar.items.filter((item) => item.status !== "cancelled")
-
-      if (itemsNoCancelados.length > 0) {
-        await devolverStockDeItems(itemsNoCancelados)
-      }
-
-      const { error } = await supabase
-        .from("redemptions")
-        .delete()
-        .in("id", grupoAEliminar.ids)
-
-      if (error) {
-        setTipoMensaje("error")
-        setMensaje("Ocurrió un error al eliminar la solicitud: " + error.message)
-        setEliminando(false)
-        return
-      }
-
-      setTipoMensaje("success")
-      setMensaje("Solicitud eliminada correctamente.")
-      await cargarRedenciones()
-      setSeleccionadas((prev) => prev.filter((id) => id !== grupoAEliminar.key))
-      setEliminando(false)
-      setConfirmOpen(false)
-      setGrupoAEliminar(null)
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Error al eliminar la solicitud."
-      setTipoMensaje("error")
-      setMensaje(errorMessage)
-      setEliminando(false)
-    }
-  }
+    return Array.from(grouped.values()).sort((a, b) =>
+      b.raw_date.localeCompare(a.raw_date)
+    )
+  }, [redenciones])
 
   const traducirEstado = (status: string) => {
     if (status === "requested") return "Solicitada"
@@ -465,26 +171,26 @@ export default function AdminRedencionesPage() {
   }
 
   const descripcionEstado = (status: string) => {
-    if (status === "requested") return "Solicitud recibida y pendiente de gestión."
-    if (status === "approved") return "Solicitud aprobada y lista para el siguiente paso."
-    if (status === "shipped") return "Solicitud marcada como enviada."
-    if (status === "delivered") return "Solicitud entregada al cliente."
-    if (status === "cancelled") return "Solicitud cancelada con devolución de stock."
-    if (status === "mixed") return "La solicitud tiene ítems con estados diferentes."
-    return "Estado actual de la solicitud."
+    if (status === "requested") return "Tu solicitud fue registrada y está pendiente de revisión."
+    if (status === "approved") return "Tu solicitud ya fue aprobada por administración."
+    if (status === "shipped") return "Tus premios ya fueron despachados o van en camino con tu pedido."
+    if (status === "delivered") return "Tus premios ya fueron entregados."
+    if (status === "cancelled") return "Tu solicitud fue cancelada."
+    if (status === "mixed") return "Esta solicitud tiene ítems con estados diferentes."
+    return "Consulta el estado actual de tu solicitud."
   }
 
-  const resumirPremios = (items: GrupoItem[]) => {
+  const resumirPremios = (premios: string[]) => {
     const conteo: Record<string, number> = {}
 
-    items.forEach((item) => {
-      conteo[item.reward_name] = (conteo[item.reward_name] || 0) + 1
+    premios.forEach((premio) => {
+      conteo[premio] = (conteo[premio] || 0) + 1
     })
 
     return Object.entries(conteo).map(([nombre, cantidad]) => `${cantidad} x ${nombre}`)
   }
 
-  const estadoBadge = (estado: string) => {
+  const estadoStyles = (estado: string) => {
     if (estado === "approved") {
       return {
         background: "#ecfdf3",
@@ -509,14 +215,6 @@ export default function AdminRedencionesPage() {
       }
     }
 
-    if (estado === "mixed") {
-      return {
-        background: "#f3f4f6",
-        color: "#4b5563",
-        border: "1px solid #d1d5db",
-      }
-    }
-
     return {
       background: "#fff7ed",
       color: "#9a3412",
@@ -524,137 +222,139 @@ export default function AdminRedencionesPage() {
     }
   }
 
-  const totalSolicitudes = grupos.length
-  const totalItems = redenciones.length
-  const totalPuntos = redenciones.reduce((acc, r) => acc + Number(r.points_used || 0), 0)
-  const totalPendientes = grupos.filter((g) => g.status === "requested").length
-  const totalAprobadas = grupos.filter((g) => g.status === "approved").length
-  const totalCanceladas = grupos.filter((g) => g.status === "cancelled").length
-
-  const idsFiltrados = gruposFiltrados.map((grupo) => grupo.key)
-  const todasVisiblesSeleccionadas =
-    idsFiltrados.length > 0 && idsFiltrados.every((id) => seleccionadas.includes(id))
-
-  const toggleSeleccion = (key: string) => {
-    setSeleccionadas((prev) =>
-      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
-    )
-  }
-
-  const toggleSeleccionarTodasVisibles = () => {
-    if (todasVisiblesSeleccionadas) {
-      setSeleccionadas((prev) => prev.filter((id) => !idsFiltrados.includes(id)))
-      return
-    }
-
-    setSeleccionadas((prev) => Array.from(new Set([...prev, ...idsFiltrados])))
-  }
-
   const refrescarPantalla = () => {
     cargarRedenciones()
   }
 
-  const textoConfirmacionMasiva =
-    accionMasivaPendiente === "cancelled"
-      ? `¿Seguro que deseas cancelar ${seleccionadas.length} solicitud(es)? Esta acción devolverá el stock de los premios que no estén cancelados.`
-      : accionMasivaPendiente === "approved"
-      ? `¿Seguro que deseas aprobar ${seleccionadas.length} solicitud(es)?`
-      : accionMasivaPendiente === "shipped"
-      ? `¿Seguro que deseas marcar como enviadas ${seleccionadas.length} solicitud(es)?`
-      : accionMasivaPendiente === "delivered"
-      ? `¿Seguro que deseas marcar como entregadas ${seleccionadas.length} solicitud(es)?`
-      : ""
-
-  const textoBotonConfirmacionMasiva =
-    accionMasivaPendiente === "cancelled"
-      ? "Sí, cancelar"
-      : accionMasivaPendiente === "approved"
-      ? "Sí, aprobar"
-      : accionMasivaPendiente === "shipped"
-      ? "Sí, marcar enviadas"
-      : accionMasivaPendiente === "delivered"
-      ? "Sí, marcar entregadas"
-      : "Confirmar"
-
-  if (!autorizado) {
+  if (cargando) {
     return (
-      <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div className="pysta-card" style={{ padding: "24px 28px" }}>
-          Validando acceso...
-        </div>
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "Arial, sans-serif",
+          background: "#f5f5f5",
+        }}
+      >
+        Cargando redenciones...
       </main>
     )
   }
 
+  if (!autorizado) {
+    return null
+  }
+
   return (
     <>
-      <main className="pysta-page">
-        <div className="pysta-shell" style={{ maxWidth: "1640px" }}>
-          <AdminMenu />
+      <InfoPopup
+        storageKey="popup-mis-redenciones"
+        title="Estado de tus redenciones"
+        message="Aquí puedes revisar el estado de tus solicitudes de premios. Recuerda que los ítems aprobados o enviados se despachan junto con el siguiente pedido que realices."
+      />
 
-          <section
-            className="pysta-card"
-            style={{
-              padding: "30px",
-              marginBottom: "22px",
-              background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
-            }}
-          >
-            <div className="pysta-topbar">
-              <div style={{ display: "grid", gap: "10px" }}>
-                <span className="pysta-badge">Gestión de redenciones</span>
-                <h1 className="pysta-section-title">Administrar redenciones</h1>
-                <p className="pysta-subtitle">
-                  Revisa solicitudes reales agrupadas, cambia su estado y controla devoluciones de stock.
-                </p>
-              </div>
-
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                <button onClick={refrescarPantalla} className="pysta-btn pysta-btn-light">
-                  Refrescar
-                </button>
-
-                <AdminLogoutButton />
-              </div>
-            </div>
-          </section>
-
+      <main
+        style={{
+          minHeight: "100vh",
+          background: "linear-gradient(180deg, #f5f5f5 0%, #ececec 100%)",
+          padding: "32px 20px",
+          fontFamily: "Arial, sans-serif",
+        }}
+      >
+        <div style={{ maxWidth: "1180px", margin: "0 auto" }}>
           <section
             style={{
-              background: "#fff",
+              background: "#ffffff",
               borderRadius: "24px",
-              padding: "22px",
+              padding: "28px",
               boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
-              border: "1px solid rgba(0,0,0,0.04)",
               marginBottom: "22px",
+              border: "1px solid rgba(0,0,0,0.04)",
             }}
           >
             <div
               style={{
                 display: "flex",
-                gap: "12px",
-                alignItems: "flex-start",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "18px",
                 flexWrap: "wrap",
               }}
             >
-              <span
-                style={{
-                  display: "inline-flex",
-                  padding: "6px 10px",
-                  borderRadius: "999px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  background: "rgba(212, 175, 55, 0.14)",
-                  color: "#7a5b00",
-                  border: "1px solid rgba(212, 175, 55, 0.24)",
-                }}
-              >
-                Información importante
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    width: "84px",
+                    height: "84px",
+                    borderRadius: "18px",
+                    background: "#fff",
+                    border: "1px solid #e5e7eb",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                    boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <img
+                    src="/logo-pysta.png"
+                    alt="Pysta"
+                    style={{
+                      maxWidth: "76px",
+                      maxHeight: "76px",
+                      objectFit: "contain",
+                    }}
+                  />
+                </div>
 
-              <p style={{ margin: 0, color: "#111", lineHeight: 1.6, fontSize: "15px" }}>
-                Cada tarjeta representa una solicitud real agrupada. Si cancelas o eliminas una solicitud, el sistema devuelve el stock de los premios que no estuvieran cancelados.
-              </p>
+                <div style={{ display: "grid", gap: "8px" }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      width: "fit-content",
+                      padding: "6px 12px",
+                      borderRadius: "999px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      background: "rgba(212, 175, 55, 0.14)",
+                      color: "#7a5b00",
+                      border: "1px solid rgba(212, 175, 55, 0.24)",
+                    }}
+                  >
+                    Historial de redenciones
+                  </span>
+
+                  <h1 style={{ margin: 0, fontSize: "34px", color: "#111" }}>
+                    Mis redenciones
+                  </h1>
+
+                  <p style={{ margin: 0, color: "#6b7280", fontSize: "15px" }}>
+                    {nombreCliente ? `Cliente: ${nombreCliente}` : "Consulta el estado de tus solicitudes"}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button
+                  onClick={refrescarPantalla}
+                  style={{
+                    background: "#e9e9e9",
+                    color: "#111",
+                    border: "none",
+                    padding: "12px 18px",
+                    borderRadius: "14px",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                  }}
+                >
+                  Refrescar
+                </button>
+
+                <LogoutButton />
+              </div>
             </div>
           </section>
 
@@ -666,342 +366,102 @@ export default function AdminRedencionesPage() {
               marginBottom: "22px",
             }}
           >
-            <ResumenCard titulo="Solicitudes" valor={String(totalSolicitudes)} descripcion="Grupos reales de redención" />
-            <ResumenCard titulo="Ítems redimidos" valor={String(totalItems)} descripcion="Premios solicitados" />
-            <ResumenCard titulo="Puntos usados" valor={String(totalPuntos)} descripcion="Total comprometido" />
-            <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="Aún por gestionar" />
-            <ResumenCard titulo="Aprobadas" valor={String(totalAprobadas)} descripcion="Listas para proceso" />
-            <ResumenCard titulo="Canceladas" valor={String(totalCanceladas)} descripcion="Con stock devuelto" />
+            <ResumenCard titulo="Solicitudes" valor={String(grupos.length)} descripcion="Total de solicitudes registradas" />
+            <ResumenCard titulo="Premios solicitados" valor={String(redenciones.length)} descripcion="Total de ítems redimidos" />
+            <ResumenCard titulo="Puntos usados" valor={String(redenciones.reduce((acc, item) => acc + Number(item.points_used || 0), 0))} descripcion="Total de puntos utilizados" />
+            <ResumenCard titulo="Asesor asignado" valor={asesorNombre || "-"} descripcion="Persona de apoyo para seguimiento" />
           </section>
 
-          <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
-            <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
-              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
-              <p style={{ margin: 0, color: "#6b7280" }}>
-                Filtra por cliente, correo, documento, asesor, estado o fecha de solicitud.
+          {mensaje ? (
+            <section style={messageCardStyle}>{mensaje}</section>
+          ) : grupos.length === 0 ? (
+            <section style={emptyCardStyle}>
+              <h2 style={{ margin: 0, fontSize: "24px", color: "#111" }}>Aún no has realizado redenciones</h2>
+              <p style={{ margin: "10px 0 0 0", color: "#6b7280", lineHeight: 1.6 }}>
+                Cuando redimas premios, aquí podrás consultar el historial y estado de cada solicitud.
               </p>
-            </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: "16px",
-                marginBottom: "16px",
-              }}
-            >
-              <div>
-                <label style={labelStyle}>Filtrar por cliente</label>
-                <input
-                  className="pysta-input"
-                  type="text"
-                  placeholder="Nombre, correo, documento o asesor"
-                  value={filtroCliente}
-                  onChange={(e) => setFiltroCliente(e.target.value)}
-                />
+              <div style={{ marginTop: "20px" }}>
+                <a href="/dashboard/premios" style={buttonGold}>
+                  Ver premios disponibles
+                </a>
               </div>
-
-              <div>
-                <label style={labelStyle}>Filtrar por estado</label>
-                <select
-                  className="pysta-select"
-                  value={filtroEstado}
-                  onChange={(e) => setFiltroEstado(e.target.value)}
+            </section>
+          ) : (
+            <section style={{ display: "grid", gap: "16px" }}>
+              {grupos.map((grupo) => (
+                <article
+                  key={grupo.key}
+                  style={{
+                    background: "#fff",
+                    borderRadius: "22px",
+                    padding: "22px",
+                    boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
+                    border: "1px solid rgba(0,0,0,0.04)",
+                  }}
                 >
-                  <option value="">Todas</option>
-                  <option value="requested">Solicitadas</option>
-                  <option value="approved">Aprobadas</option>
-                  <option value="shipped">Enviadas</option>
-                  <option value="delivered">Entregadas</option>
-                  <option value="cancelled">Canceladas</option>
-                  <option value="mixed">Mixto</option>
-                </select>
-              </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "16px",
+                      flexWrap: "wrap",
+                      alignItems: "flex-start",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <div>
+                      <p style={{ margin: 0, color: "#6b7280", fontSize: "13px", fontWeight: 700 }}>
+                        SOLICITUD
+                      </p>
+                      <h3 style={{ margin: "6px 0 0 0", fontSize: "24px", color: "#111" }}>
+                        {grupo.date_label}
+                      </h3>
+                    </div>
 
-              <div>
-                <label style={labelStyle}>Filtrar por fecha</label>
-                <input
-                  className="pysta-input"
-                  type="date"
-                  value={filtroFecha}
-                  onChange={(e) => setFiltroFecha(e.target.value)}
-                />
-              </div>
-            </div>
+                    <span
+                      style={{
+                        ...estadoStyles(grupo.status),
+                        padding: "8px 12px",
+                        borderRadius: "999px",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {traducirEstado(grupo.status)}
+                    </span>
+                  </div>
 
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <button
-                onClick={() => {
-                  setFiltroCliente("")
-                  setFiltroEstado("")
-                  setFiltroFecha("")
-                }}
-                className="pysta-btn pysta-btn-light"
-              >
-                Limpiar filtros
-              </button>
-
-              <button
-                onClick={toggleSeleccionarTodasVisibles}
-                className="pysta-btn pysta-btn-light"
-              >
-                {todasVisiblesSeleccionadas ? "Quitar visibles" : "Seleccionar visibles"}
-              </button>
-
-              <button
-                onClick={() => setSeleccionadas([])}
-                className="pysta-btn pysta-btn-light"
-              >
-                Limpiar selección
-              </button>
-            </div>
-          </section>
-
-          <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
-            <div style={{ display: "grid", gap: "8px", marginBottom: "16px" }}>
-              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Acciones masivas</h2>
-              <p style={{ margin: 0, color: "#6b7280" }}>
-                Solicitudes seleccionadas: {seleccionadas.length}
-              </p>
-            </div>
-
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <button
-                onClick={() => abrirConfirmacionMasiva("approved")}
-                className="pysta-btn pysta-btn-gold"
-                disabled={procesandoMasivo}
-                style={{ opacity: procesandoMasivo ? 0.7 : 1 }}
-              >
-                Aprobar seleccionadas
-              </button>
-
-              <button
-                onClick={() => abrirConfirmacionMasiva("shipped")}
-                className="pysta-btn pysta-btn-dark"
-                disabled={procesandoMasivo}
-                style={{ opacity: procesandoMasivo ? 0.7 : 1 }}
-              >
-                Marcar enviadas
-              </button>
-
-              <button
-                onClick={() => abrirConfirmacionMasiva("delivered")}
-                className="pysta-btn pysta-btn-light"
-                disabled={procesandoMasivo}
-                style={{ opacity: procesandoMasivo ? 0.7 : 1 }}
-              >
-                Marcar entregadas
-              </button>
-
-              <button
-                onClick={() => abrirConfirmacionMasiva("cancelled")}
-                className="pysta-btn pysta-btn-light"
-                disabled={procesandoMasivo}
-                style={{ opacity: procesandoMasivo ? 0.7 : 1, border: "1px solid #e5e7eb" }}
-              >
-                Cancelar seleccionadas
-              </button>
-            </div>
-          </section>
-
-          {mensaje && (
-            <section className="pysta-card" style={{ padding: "18px 20px", marginBottom: "22px" }}>
-              <AlertMessage text={mensaje} type={tipoMensaje} />
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: "14px",
+                    }}
+                  >
+                    <InfoItem label="Solicitud ID" value={grupo.group_id} />
+                    <InfoItem label="Cantidad de ítems" value={String(grupo.item_count)} />
+                    <InfoItem label="Puntos usados" value={String(grupo.points_total)} />
+                    <InfoItem label="Estado actual" value={traducirEstado(grupo.status)} />
+                    <InfoItem label="Detalle" value={descripcionEstado(grupo.status)} />
+                    <InfoItem label="Premios" value={resumirPremios(grupo.reward_names).join(" · ")} />
+                  </div>
+                </article>
+              ))}
             </section>
           )}
 
-          <section className="pysta-card" style={{ padding: "0", overflow: "hidden" }}>
-            <div
-              style={{
-                padding: "22px 24px",
-                borderBottom: "1px solid #e5e7eb",
-                background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
-              }}
-            >
-              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Listado de redenciones</h2>
-              <p style={{ margin: "6px 0 0 0", color: "#6b7280" }}>
-                Total encontradas: {gruposFiltrados.length}
-              </p>
-            </div>
+          <div style={{ marginTop: "28px", display: "flex", gap: "14px", flexWrap: "wrap" }}>
+            <a href="/dashboard/premios" style={buttonGold}>
+              Ver premios
+            </a>
 
-            {cargando ? (
-              <div style={{ padding: "24px", color: "#333" }}>Cargando redenciones...</div>
-            ) : gruposFiltrados.length === 0 ? (
-              <div style={{ padding: "24px", color: "#333" }}>No hay redenciones para esos filtros.</div>
-            ) : (
-              <div style={{ padding: "18px" }}>
-                <div style={{ display: "grid", gap: "14px" }}>
-                  {gruposFiltrados.map((grupo) => {
-                    const seleccionada = seleccionadas.includes(grupo.key)
-
-                    return (
-                      <article
-                        key={grupo.key}
-                        style={{
-                          background: seleccionada ? "#fffdf5" : "#fff",
-                          border: seleccionada ? "1px solid #f3d37a" : "1px solid #e5e7eb",
-                          borderRadius: "20px",
-                          padding: "20px",
-                          boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: "14px",
-                            flexWrap: "wrap",
-                            marginBottom: "14px",
-                            alignItems: "flex-start",
-                          }}
-                        >
-                          <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
-                            <input
-                              type="checkbox"
-                              checked={seleccionada}
-                              onChange={() => toggleSeleccion(grupo.key)}
-                              style={{ width: "18px", height: "18px", marginTop: "6px" }}
-                            />
-
-                            <div style={{ display: "grid", gap: "8px" }}>
-                              <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
-                                {grupo.client_name}
-                              </h3>
-
-                              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                                <span style={miniBadge}>{grupo.date_label}</span>
-                                <span
-                                  style={{
-                                    ...miniBadge,
-                                    ...estadoBadge(grupo.status),
-                                  }}
-                                >
-                                  {traducirEstado(grupo.status)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="pysta-actions">
-                            <button
-                              onClick={() => cambiarEstadoGrupo(grupo, "approved")}
-                              className="pysta-btn pysta-btn-gold"
-                              style={smallActionBtn}
-                            >
-                              Aprobar
-                            </button>
-
-                            <button
-                              onClick={() => cambiarEstadoGrupo(grupo, "shipped")}
-                              className="pysta-btn pysta-btn-dark"
-                              style={smallActionBtn}
-                            >
-                              Enviado
-                            </button>
-
-                            <button
-                              onClick={() => cambiarEstadoGrupo(grupo, "delivered")}
-                              className="pysta-btn pysta-btn-light"
-                              style={smallActionBtn}
-                            >
-                              Entregado
-                            </button>
-
-                            <button
-                              onClick={() => cambiarEstadoGrupo(grupo, "cancelled")}
-                              className="pysta-btn pysta-btn-light"
-                              style={{ ...smallActionBtn, border: "1px solid #e5e7eb" }}
-                            >
-                              Cancelar
-                            </button>
-
-                            <button
-                              onClick={() => pedirEliminarGrupo(grupo)}
-                              className="pysta-btn pysta-btn-danger"
-                              style={smallActionBtn}
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                            gap: "12px",
-                          }}
-                        >
-                          <InfoItem label="Correo" value={grupo.user_email} />
-                          <InfoItem label="Documento" value={grupo.document_number || "-"} />
-                          <InfoItem label="Asesor" value={grupo.advisor_name || "-"} />
-                          <InfoItem label="Puntos usados" value={String(grupo.points_total)} />
-                          <InfoItem label="Estado actual" value={traducirEstado(grupo.status)} />
-                          <InfoItem label="Detalle" value={descripcionEstado(grupo.status)} />
-                        </div>
-
-                        <div
-                          style={{
-                            marginTop: "12px",
-                            background: "#f9fafb",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: "14px",
-                            padding: "12px 14px",
-                          }}
-                        >
-                          <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
-                            Premios solicitados
-                          </p>
-
-                          <div style={{ display: "grid", gap: "6px" }}>
-                            {resumirPremios(grupo.items).map((texto, index) => (
-                              <p key={`${grupo.key}-${index}`} style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>
-                                • {texto}
-                              </p>
-                            ))}
-                          </div>
-                        </div>
-                      </article>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </section>
+            <a href="/dashboard" style={buttonDark}>
+              Volver al panel
+            </a>
+          </div>
         </div>
       </main>
-
-      <ConfirmModal
-        open={confirmOpen}
-        title="Eliminar solicitud"
-        message={
-          grupoAEliminar
-            ? `¿Seguro que deseas eliminar la solicitud de ${grupoAEliminar.client_name}? Esta acción no se puede deshacer.`
-            : ""
-        }
-        confirmText="Sí, eliminar"
-        cancelText="Cancelar"
-        danger
-        loading={eliminando}
-        onCancel={cerrarModalEliminar}
-        onConfirm={confirmarEliminarGrupo}
-      />
-
-      <ConfirmModal
-        open={confirmMasivoOpen}
-        title="Confirmar acción masiva"
-        message={textoConfirmacionMasiva}
-        confirmText={textoBotonConfirmacionMasiva}
-        cancelText="Cancelar"
-        danger={accionMasivaPendiente === "cancelled"}
-        loading={procesandoMasivo}
-        onCancel={() => {
-          if (procesandoMasivo) return
-          setConfirmMasivoOpen(false)
-          setAccionMasivaPendiente("")
-        }}
-        onConfirm={confirmarAccionMasiva}
-      />
     </>
   )
 }
@@ -1017,10 +477,12 @@ function ResumenCard({
 }) {
   return (
     <div
-      className="pysta-card"
       style={{
+        background: "#fff",
+        borderRadius: "22px",
         padding: "22px",
-        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
+        boxShadow: "0 10px 28px rgba(0,0,0,0.07)",
+        border: "1px solid rgba(0,0,0,0.04)",
       }}
     >
       <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
@@ -1036,41 +498,53 @@ function InfoItem({ label, value }: { label: string; value: string }) {
       style={{
         background: "#f9fafb",
         border: "1px solid #e5e7eb",
-        borderRadius: "14px",
-        padding: "12px 14px",
+        borderRadius: "16px",
+        padding: "14px 16px",
       }}
     >
       <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
         {label}
       </p>
-      <p style={{ margin: 0, fontSize: "15px", color: "#111", lineHeight: 1.5 }}>
+      <p style={{ margin: 0, fontSize: "16px", color: "#111", lineHeight: 1.5, wordBreak: "break-word" }}>
         {value}
       </p>
     </div>
   )
 }
 
-const labelStyle = {
-  display: "block",
-  marginBottom: "8px",
+const messageCardStyle = {
+  background: "#fff",
+  borderRadius: "22px",
+  padding: "22px",
+  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
+  border: "1px solid rgba(0,0,0,0.04)",
   color: "#111",
-  fontWeight: "bold" as const,
-  fontSize: "14px",
 }
 
-const miniBadge = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "6px 10px",
-  borderRadius: "999px",
-  fontSize: "12px",
-  fontWeight: "bold" as const,
-  background: "rgba(212, 175, 55, 0.14)",
-  color: "#7a5b00",
-  border: "1px solid rgba(212, 175, 55, 0.24)",
+const emptyCardStyle = {
+  background: "#fff",
+  borderRadius: "22px",
+  padding: "28px",
+  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
+  border: "1px solid rgba(0,0,0,0.04)",
 }
 
-const smallActionBtn = {
-  padding: "10px 14px",
-  fontSize: "13px",
+const buttonDark = {
+  backgroundColor: "#111",
+  color: "white",
+  textDecoration: "none",
+  padding: "14px 24px",
+  borderRadius: "14px",
+  display: "inline-block",
+  fontWeight: "bold" as const,
+}
+
+const buttonGold = {
+  backgroundColor: "#d4af37",
+  color: "#111",
+  textDecoration: "none",
+  padding: "14px 24px",
+  borderRadius: "14px",
+  display: "inline-block",
+  fontWeight: "bold" as const,
 }

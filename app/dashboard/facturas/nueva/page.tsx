@@ -1,7 +1,7 @@
 "use client"
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "../../../../lib/supabase"
 import LogoutButton from "../../../../components/LogoutButton"
 import InfoPopup from "../../../../components/InfoPopup"
@@ -10,8 +10,21 @@ type SettingsRow = {
   redemption_percentage: number
 }
 
+type ExistingInvoice = {
+  id: string
+  user_email: string
+  invoice_number: string
+  invoice_date: string
+  amount_without_vat: number
+  notes: string | null
+  file_url: string | null
+  file_name: string | null
+  status: string
+}
+
 export default function NuevaFacturaPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [autorizado, setAutorizado] = useState(false)
   const [invoiceNumber, setInvoiceNumber] = useState("")
@@ -24,6 +37,12 @@ export default function NuevaFacturaPage() {
   const [cargando, setCargando] = useState(true)
   const [nombreCliente, setNombreCliente] = useState("")
   const [redemptionPercentage, setRedemptionPercentage] = useState(6)
+
+  const [editInvoiceId, setEditInvoiceId] = useState("")
+  const [existingFileUrl, setExistingFileUrl] = useState("")
+  const [existingFileName, setExistingFileName] = useState("")
+
+  const invoiceIdToEdit = searchParams.get("edit") || ""
 
   const cerrarSesionCliente = async () => {
     await supabase.auth.signOut()
@@ -78,6 +97,27 @@ export default function NuevaFacturaPage() {
 
       const settings = settingsData as SettingsRow | null
       setRedemptionPercentage(Number(settings?.redemption_percentage || 6))
+
+      if (invoiceIdToEdit) {
+        const { data: facturaEdit, error: facturaEditError } = await supabase
+          .from("invoices")
+          .select("id, user_email, invoice_number, invoice_date, amount_without_vat, notes, file_url, file_name, status")
+          .eq("id", invoiceIdToEdit)
+          .eq("user_email", profile.email)
+          .eq("status", "rejected")
+          .maybeSingle()
+
+        if (!facturaEditError && facturaEdit) {
+          const factura = facturaEdit as ExistingInvoice
+          setEditInvoiceId(factura.id)
+          setInvoiceNumber(factura.invoice_number || "")
+          setInvoiceDate(factura.invoice_date || "")
+          setAmountWithoutVat(String(Number(factura.amount_without_vat || 0)))
+          setNotes(factura.notes || "")
+          setExistingFileUrl(factura.file_url || "")
+          setExistingFileName(factura.file_name || "")
+        }
+      }
     } catch {
       await cerrarSesionCliente()
     } finally {
@@ -87,7 +127,7 @@ export default function NuevaFacturaPage() {
 
   useEffect(() => {
     validarCliente()
-  }, [router])
+  }, [router, invoiceIdToEdit])
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null
@@ -101,7 +141,10 @@ export default function NuevaFacturaPage() {
 
   const subirArchivo = async () => {
     if (!file) {
-      throw new Error("Debes adjuntar la foto o el PDF de la factura.")
+      return {
+        fileUrl: existingFileUrl || null,
+        fileName: existingFileName || null,
+      }
     }
 
     const extension = file.name.split(".").pop()?.toLowerCase() || ""
@@ -149,7 +192,7 @@ export default function NuevaFacturaPage() {
       return
     }
 
-    if (!file) {
+    if (!file && !existingFileUrl) {
       setMensaje("Debes adjuntar la foto o el PDF de la factura.")
       return
     }
@@ -159,18 +202,21 @@ export default function NuevaFacturaPage() {
       return
     }
 
-    const { data: existingInvoice, error: existingInvoiceError } = await supabase
+    const query = supabase
       .from("invoices")
       .select("id")
       .eq("invoice_number", invoiceNumber.trim())
-      .maybeSingle()
+
+    const { data: existingInvoices, error: existingInvoiceError } = editInvoiceId
+      ? await query.neq("id", editInvoiceId)
+      : await query
 
     if (existingInvoiceError) {
       setMensaje("No se pudo validar el número de factura.")
       return
     }
 
-    if (existingInvoice) {
+    if (existingInvoices && existingInvoices.length > 0) {
       setMensaje("Ya existe una factura registrada con ese número.")
       return
     }
@@ -179,6 +225,32 @@ export default function NuevaFacturaPage() {
       setGuardando(true)
 
       const { fileUrl, fileName } = await subirArchivo()
+
+      if (editInvoiceId) {
+        const { error } = await supabase
+          .from("invoices")
+          .update({
+            invoice_number: invoiceNumber.trim(),
+            invoice_date: invoiceDate,
+            amount_without_vat: Number(amountWithoutVat),
+            notes,
+            file_url: fileUrl,
+            file_name: fileName,
+            status: "pending",
+          })
+          .eq("id", editInvoiceId)
+          .eq("user_email", userEmail)
+
+        if (error) {
+          setMensaje("Ocurrió un error al reemplazar la factura: " + error.message)
+          setGuardando(false)
+          return
+        }
+
+        setMensaje("Factura reemplazada correctamente. Quedó nuevamente pendiente de aprobación.")
+        router.push("/dashboard/mis-facturas")
+        return
+      }
 
       const { error } = await supabase.from("invoices").insert([
         {
@@ -211,6 +283,8 @@ export default function NuevaFacturaPage() {
       setAmountWithoutVat("")
       setNotes("")
       setFile(null)
+      setExistingFileUrl("")
+      setExistingFileName("")
 
       const fileInput = document.getElementById("invoice-file-input") as HTMLInputElement | null
       if (fileInput) {
@@ -227,11 +301,16 @@ export default function NuevaFacturaPage() {
 
   const refrescarPantalla = () => {
     setMensaje("")
-    setInvoiceNumber("")
-    setInvoiceDate("")
-    setAmountWithoutVat("")
-    setNotes("")
     setFile(null)
+
+    if (!editInvoiceId) {
+      setInvoiceNumber("")
+      setInvoiceDate("")
+      setAmountWithoutVat("")
+      setNotes("")
+      setExistingFileUrl("")
+      setExistingFileName("")
+    }
 
     const fileInput = document.getElementById("invoice-file-input") as HTMLInputElement | null
     if (fileInput) {
@@ -281,8 +360,12 @@ export default function NuevaFacturaPage() {
     <>
       <InfoPopup
         storageKey="popup-nueva-factura"
-        title="Registro de factura"
-        message="Cuando registres una nueva factura, esta quedará pendiente de aprobación mientras es revisada por administración. Luego podrás consultar su estado en Mis facturas."
+        title={editInvoiceId ? "Reemplazo de factura" : "Registro de factura"}
+        message={
+          editInvoiceId
+            ? "Estás reemplazando una factura rechazada. Cuando la guardes, volverá a quedar pendiente de aprobación."
+            : "Cuando registres una nueva factura, esta quedará pendiente de aprobación mientras es revisada por administración. Luego podrás consultar su estado en Mis facturas."
+        }
       />
 
       <main
@@ -358,7 +441,7 @@ export default function NuevaFacturaPage() {
                   </span>
 
                   <h1 style={{ margin: 0, fontSize: "32px", color: "#111", lineHeight: 1.1 }}>
-                    Registrar factura
+                    {editInvoiceId ? "Reemplazar factura rechazada" : "Registrar factura"}
                   </h1>
 
                   <p style={{ margin: 0, color: "#6b7280", fontSize: "15px" }}>
@@ -381,7 +464,7 @@ export default function NuevaFacturaPage() {
                     fontWeight: 700,
                   }}
                 >
-                  Limpiar formulario
+                  {editInvoiceId ? "Limpiar archivo nuevo" : "Limpiar formulario"}
                 </button>
 
                 <LogoutButton />
@@ -423,7 +506,9 @@ export default function NuevaFacturaPage() {
               </span>
 
               <p style={{ margin: 0, color: "#111", lineHeight: 1.6, fontSize: "15px" }}>
-                La factura que registres quedará pendiente de aprobación mientras es revisada por administración. Luego podrás consultar su estado en la sección Mis facturas.
+                {editInvoiceId
+                  ? "Estás reemplazando una factura rechazada. Al guardar, esta volverá a quedar pendiente de aprobación."
+                  : "La factura que registres quedará pendiente de aprobación mientras es revisada por administración. Luego podrás consultar su estado en la sección Mis facturas."}
               </p>
             </div>
           </section>
@@ -440,7 +525,9 @@ export default function NuevaFacturaPage() {
               }}
             >
               <div style={{ marginBottom: "22px" }}>
-                <h2 style={{ margin: 0, fontSize: "26px", color: "#111" }}>Datos de la factura</h2>
+                <h2 style={{ margin: 0, fontSize: "26px", color: "#111" }}>
+                  {editInvoiceId ? "Datos para reemplazo" : "Datos de la factura"}
+                </h2>
                 <p style={{ margin: "8px 0 0 0", color: "#6b7280", lineHeight: 1.5 }}>
                   Completa la información y adjunta la foto o PDF de la factura para que pueda ser revisada.
                 </p>
@@ -480,7 +567,9 @@ export default function NuevaFacturaPage() {
                 </div>
 
                 <div className="full-width">
-                  <label style={labelStyle}>Adjuntar foto o PDF de la factura *</label>
+                  <label style={labelStyle}>
+                    {editInvoiceId ? "Adjuntar nuevo archivo o conservar el actual" : "Adjuntar foto o PDF de la factura *"}
+                  </label>
 
                   <div
                     style={{
@@ -502,7 +591,24 @@ export default function NuevaFacturaPage() {
                       Formatos permitidos: JPG, PNG, WEBP o PDF.
                     </p>
 
-                    {file && (
+                    {existingFileUrl && !file ? (
+                      <div
+                        style={{
+                          marginTop: "14px",
+                          background: "#fff",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "14px",
+                          padding: "12px 14px",
+                          color: "#111",
+                          fontSize: "14px",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        Archivo actual: {existingFileName || "Archivo existente"}
+                      </div>
+                    ) : null}
+
+                    {file ? (
                       <div
                         style={{
                           marginTop: "14px",
@@ -516,9 +622,9 @@ export default function NuevaFacturaPage() {
                           wordBreak: "break-word",
                         }}
                       >
-                        Archivo seleccionado: {file.name}
+                        Nuevo archivo seleccionado: {file.name}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -538,7 +644,11 @@ export default function NuevaFacturaPage() {
 
               <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", marginTop: "24px" }}>
                 <button onClick={handleGuardarFactura} disabled={guardando} style={primaryButton}>
-                  {guardando ? "Guardando..." : "Guardar factura"}
+                  {guardando
+                    ? "Guardando..."
+                    : editInvoiceId
+                    ? "Reemplazar factura"
+                    : "Guardar factura"}
                 </button>
 
                 <a href="/dashboard" style={secondaryButton}>
@@ -552,17 +662,17 @@ export default function NuevaFacturaPage() {
                     marginTop: "20px",
                     background:
                       mensaje.toLowerCase().includes("correctamente") ||
-                      mensaje.toLowerCase().includes("pendiente de aprobación")
+                      mensaje.toLowerCase().includes("pendiente")
                         ? "#ecfdf3"
                         : "#eff6ff",
                     border:
                       mensaje.toLowerCase().includes("correctamente") ||
-                      mensaje.toLowerCase().includes("pendiente de aprobación")
+                      mensaje.toLowerCase().includes("pendiente")
                         ? "1px solid #bbf7d0"
                         : "1px solid #bfdbfe",
                     color:
                       mensaje.toLowerCase().includes("correctamente") ||
-                      mensaje.toLowerCase().includes("pendiente de aprobación")
+                      mensaje.toLowerCase().includes("pendiente")
                         ? "#166534"
                         : "#1d4ed8",
                     borderRadius: "16px",

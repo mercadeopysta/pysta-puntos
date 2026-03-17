@@ -242,12 +242,7 @@ export default function AdminPremiosPage() {
     }
 
     setTipoMensaje("success")
-    setMensaje(
-      premio.is_active
-        ? "Premio desactivado correctamente."
-        : "Premio activado correctamente."
-    )
-
+    setMensaje(premio.is_active ? "Premio desactivado correctamente." : "Premio activado correctamente.")
     cargarPremios()
   }
 
@@ -268,12 +263,10 @@ export default function AdminPremiosPage() {
     setMensaje("")
     setEliminando(true)
 
-    const premio = premioAEliminar
-
     const { count, error: redencionesError } = await supabase
       .from("redemptions")
       .select("*", { count: "exact", head: true })
-      .eq("reward_id", premio.id)
+      .eq("reward_id", premioAEliminar.id)
 
     if (redencionesError) {
       setTipoMensaje("error")
@@ -294,7 +287,7 @@ export default function AdminPremiosPage() {
     const { error } = await supabase
       .from("rewards")
       .delete()
-      .eq("id", premio.id)
+      .eq("id", premioAEliminar.id)
 
     if (error) {
       setTipoMensaje("error")
@@ -306,7 +299,7 @@ export default function AdminPremiosPage() {
     setTipoMensaje("success")
     setMensaje("Premio eliminado correctamente.")
 
-    if (editingId === premio.id) {
+    if (editingId === premioAEliminar.id) {
       limpiarFormulario()
     }
 
@@ -319,20 +312,37 @@ export default function AdminPremiosPage() {
   const totalActivos = premios.filter((p) => p.is_active).length
   const totalInactivos = premios.filter((p) => !p.is_active).length
   const totalStock = premios.reduce((acc, p) => acc + Number(p.stock || 0), 0)
-  const totalMayorista = premios.filter((p) => (p.client_type || "").toLowerCase() === "mayorista").length
-  const totalDistribuidor = premios.filter((p) => (p.client_type || "").toLowerCase() === "distribuidor").length
-  const totalAmbos = premios.filter((p) => (p.client_type || "").toLowerCase() === "ambos").length
+  const totalStockCritico = premios.filter((p) => p.is_active && Number(p.stock || 0) >= 1 && Number(p.stock || 0) <= 2).length
+  const totalStockBajo = premios.filter((p) => p.is_active && Number(p.stock || 0) >= 3 && Number(p.stock || 0) <= 5).length
 
   const puntosCalculados = itemValue && Number(itemValue) > 0 ? Math.ceil(Number(itemValue) / 100) : 0
-  const compraMinimaEstimada =
-    itemValue && Number(itemValue) > 0
-      ? Math.ceil(Number(itemValue) / 0.06)
-      : 0
 
-  const premioMasCaro = useMemo(() => {
-    if (!premios.length) return null
-    return [...premios].sort((a, b) => Number(b.item_value || 0) - Number(a.item_value || 0))[0]
-  }, [premios])
+  const obtenerEstadoStock = (stockValue: number) => {
+    const stock = Number(stockValue || 0)
+
+    if (stock === 0) return "agotado"
+    if (stock >= 1 && stock <= 2) return "critico"
+    if (stock >= 3 && stock <= 5) return "bajo"
+    return "normal"
+  }
+
+  const renderStockBadge = (stockValue: number) => {
+    const estado = obtenerEstadoStock(stockValue)
+
+    if (estado === "agotado") {
+      return <span style={badgeAgotado}>Agotado</span>
+    }
+
+    if (estado === "critico") {
+      return <span style={badgeCritico}>Stock crítico</span>
+    }
+
+    if (estado === "bajo") {
+      return <span style={badgeBajo}>Stock bajo</span>
+    }
+
+    return <span style={badgeNormal}>Stock normal</span>
+  }
 
   if (!autorizado) {
     return (
@@ -350,14 +360,7 @@ export default function AdminPremiosPage() {
         <div className="pysta-shell" style={{ maxWidth: "1380px" }}>
           <AdminMenu />
 
-          <section
-            className="pysta-card"
-            style={{
-              padding: "30px",
-              marginBottom: "22px",
-              background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
-            }}
-          >
+          <section className="pysta-card" style={{ padding: "30px", marginBottom: "22px", background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)" }}>
             <div className="pysta-topbar">
               <div style={{ display: "grid", gap: "10px" }}>
                 <span className="pysta-badge">Gestión de catálogo</span>
@@ -383,9 +386,8 @@ export default function AdminPremiosPage() {
             <ResumenCard titulo="Activos" valor={String(totalActivos)} descripcion="Visibles para clientes" />
             <ResumenCard titulo="Inactivos" valor={String(totalInactivos)} descripcion="Ocultos temporalmente" />
             <ResumenCard titulo="Stock total" valor={String(totalStock)} descripcion="Unidades disponibles" />
-            <ResumenCard titulo="Mayorista" valor={String(totalMayorista)} descripcion="Premios para este perfil" />
-            <ResumenCard titulo="Distribuidor" valor={String(totalDistribuidor)} descripcion="Premios para este perfil" />
-            <ResumenCard titulo="Ambos" valor={String(totalAmbos)} descripcion="Visibles para ambos perfiles" />
+            <ResumenCard titulo="Stock crítico" valor={String(totalStockCritico)} descripcion="Entre 1 y 2" />
+            <ResumenCard titulo="Stock bajo" valor={String(totalStockBajo)} descripcion="Entre 3 y 5" />
           </section>
 
           <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
@@ -414,21 +416,11 @@ export default function AdminPremiosPage() {
                   }}
                 >
                   <Field label="Nombre del premio">
-                    <input
-                      className="pysta-input"
-                      type="text"
-                      placeholder="Nombre del premio"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                    />
+                    <input className="pysta-input" type="text" value={name} onChange={(e) => setName(e.target.value)} />
                   </Field>
 
                   <Field label="Tipo de cliente">
-                    <select
-                      className="pysta-select"
-                      value={clientType}
-                      onChange={(e) => setClientType(e.target.value)}
-                    >
+                    <select className="pysta-select" value={clientType} onChange={(e) => setClientType(e.target.value)}>
                       <option value="">Selecciona tipo de cliente</option>
                       <option value="Mayorista">Mayorista</option>
                       <option value="Distribuidor">Distribuidor</option>
@@ -437,58 +429,26 @@ export default function AdminPremiosPage() {
                   </Field>
 
                   <Field label="Valor del premio">
-                    <input
-                      className="pysta-input"
-                      type="number"
-                      placeholder="Valor del premio"
-                      value={itemValue}
-                      onChange={(e) => setItemValue(e.target.value)}
-                    />
+                    <input className="pysta-input" type="number" value={itemValue} onChange={(e) => setItemValue(e.target.value)} />
                   </Field>
 
                   <Field label="Stock disponible">
-                    <input
-                      className="pysta-input"
-                      type="number"
-                      placeholder="Stock disponible"
-                      value={stock}
-                      onChange={(e) => setStock(e.target.value)}
-                    />
+                    <input className="pysta-input" type="number" value={stock} onChange={(e) => setStock(e.target.value)} />
                   </Field>
 
                   <Field label="Máximo por usuario al mes">
-                    <input
-                      className="pysta-input"
-                      type="number"
-                      placeholder="Ej: 2"
-                      value={maxMonthlyPerUser}
-                      onChange={(e) => setMaxMonthlyPerUser(e.target.value)}
-                    />
+                    <input className="pysta-input" type="number" value={maxMonthlyPerUser} onChange={(e) => setMaxMonthlyPerUser(e.target.value)} />
                   </Field>
                 </div>
 
                 <div style={{ marginTop: "16px" }}>
                   <label style={labelStyle}>Foto del premio</label>
-                  <input
-                    className="pysta-input"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                  />
+                  <input className="pysta-input" type="file" accept="image/*" onChange={handleFileChange} />
                 </div>
 
                 <div className="pysta-actions" style={{ marginTop: "18px" }}>
-                  <button
-                    onClick={handleGuardarPremio}
-                    disabled={subiendo}
-                    className="pysta-btn pysta-btn-dark"
-                    style={{ opacity: subiendo ? 0.7 : 1 }}
-                  >
-                    {subiendo
-                      ? "Subiendo..."
-                      : editingId
-                      ? "Actualizar premio"
-                      : "Guardar premio"}
+                  <button onClick={handleGuardarPremio} disabled={subiendo} className="pysta-btn pysta-btn-dark" style={{ opacity: subiendo ? 0.7 : 1 }}>
+                    {subiendo ? "Subiendo..." : editingId ? "Actualizar premio" : "Guardar premio"}
                   </button>
 
                   {editingId && (
@@ -519,16 +479,11 @@ export default function AdminPremiosPage() {
                 <div>
                   <h3 style={{ margin: 0, fontSize: "20px", color: "#111" }}>Vista rápida</h3>
                   <p style={{ margin: "8px 0 0 0", color: "#6b7280", lineHeight: 1.5 }}>
-                    Verifica la imagen actual y los cálculos automáticos del premio.
+                    Verifica la imagen actual y el cálculo del premio.
                   </p>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                  }}
-                >
+                <div style={{ display: "flex", justifyContent: "center" }}>
                   {currentImageUrl ? (
                     <img
                       src={currentImageUrl}
@@ -564,11 +519,7 @@ export default function AdminPremiosPage() {
                 </div>
 
                 <InfoItem label="Puntos requeridos calculados" value={String(puntosCalculados)} />
-                <InfoItem
-                  label="Compra mínima estimada"
-                  value={compraMinimaEstimada ? `$${compraMinimaEstimada.toLocaleString("es-CO")}` : "-"}
-                />
-                <InfoItem label="Premio más costoso actual" value={premioMasCaro ? premioMasCaro.name : "-"} />
+                <InfoItem label="Nivel de stock actual" value={renderStockTexto(Number(stock || 0))} />
               </div>
             </div>
           </section>
@@ -664,47 +615,33 @@ export default function AdminPremiosPage() {
                               </h3>
 
                               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                                <span style={miniBadge}>
-                                  {premio.client_type || "Sin tipo"}
-                                </span>
+                                <span style={miniBadge}>{premio.client_type || "Sin tipo"}</span>
 
                                 <span
                                   style={{
                                     ...miniBadge,
                                     background: premio.is_active ? "#ecfdf3" : "#fef2f2",
                                     color: premio.is_active ? "#166534" : "#991b1b",
-                                    border: premio.is_active
-                                      ? "1px solid #bbf7d0"
-                                      : "1px solid #fecaca",
+                                    border: premio.is_active ? "1px solid #bbf7d0" : "1px solid #fecaca",
                                   }}
                                 >
                                   {premio.is_active ? "Activo" : "Inactivo"}
                                 </span>
+
+                                {renderStockBadge(Number(premio.stock || 0))}
                               </div>
                             </div>
 
                             <div className="pysta-actions">
-                              <button
-                                onClick={() => handleEditar(premio)}
-                                className="pysta-btn pysta-btn-gold"
-                                style={smallActionBtn}
-                              >
+                              <button onClick={() => handleEditar(premio)} className="pysta-btn pysta-btn-gold" style={smallActionBtn}>
                                 Editar
                               </button>
 
-                              <button
-                                onClick={() => handleCambiarEstado(premio)}
-                                className="pysta-btn pysta-btn-light"
-                                style={smallActionBtn}
-                              >
+                              <button onClick={() => handleCambiarEstado(premio)} className="pysta-btn pysta-btn-light" style={smallActionBtn}>
                                 {premio.is_active ? "Desactivar" : "Activar"}
                               </button>
 
-                              <button
-                                onClick={() => pedirEliminarPremio(premio)}
-                                className="pysta-btn pysta-btn-danger"
-                                style={smallActionBtn}
-                              >
+                              <button onClick={() => pedirEliminarPremio(premio)} className="pysta-btn pysta-btn-danger" style={smallActionBtn}>
                                 Eliminar
                               </button>
                             </div>
@@ -717,22 +654,10 @@ export default function AdminPremiosPage() {
                               gap: "12px",
                             }}
                           >
-                            <InfoItem
-                              label="Valor"
-                              value={`$${Number(premio.item_value || 0).toLocaleString("es-CO")}`}
-                            />
-                            <InfoItem
-                              label="Puntos requeridos"
-                              value={String(premio.points_required)}
-                            />
-                            <InfoItem
-                              label="Stock disponible"
-                              value={String(premio.stock)}
-                            />
-                            <InfoItem
-                              label="Máximo por usuario al mes"
-                              value={String(premio.max_monthly_per_user ?? 0)}
-                            />
+                            <InfoItem label="Valor" value={`$${Number(premio.item_value || 0).toLocaleString("es-CO")}`} />
+                            <InfoItem label="Puntos requeridos" value={String(premio.points_required)} />
+                            <InfoItem label="Stock disponible" value={String(premio.stock)} />
+                            <InfoItem label="Máximo por usuario al mes" value={String(premio.max_monthly_per_user ?? 0)} />
                           </div>
                         </div>
                       </div>
@@ -783,13 +708,7 @@ function ResumenCard({
   descripcion: string
 }) {
   return (
-    <div
-      className="pysta-card"
-      style={{
-        padding: "22px",
-        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
-      }}
-    >
+    <div className="pysta-card" style={{ padding: "22px", background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)" }}>
       <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
       <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
       <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
@@ -799,22 +718,18 @@ function ResumenCard({
 
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      style={{
-        background: "#f9fafb",
-        border: "1px solid #e5e7eb",
-        borderRadius: "14px",
-        padding: "12px 14px",
-      }}
-    >
-      <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
-        {label}
-      </p>
-      <p style={{ margin: 0, fontSize: "15px", color: "#111", lineHeight: 1.5 }}>
-        {value}
-      </p>
+    <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "12px 14px" }}>
+      <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>{label}</p>
+      <p style={{ margin: 0, fontSize: "15px", color: "#111", lineHeight: 1.5 }}>{value}</p>
     </div>
   )
+}
+
+function renderStockTexto(stock: number) {
+  if (stock === 0) return "Agotado"
+  if (stock >= 1 && stock <= 2) return "Crítico"
+  if (stock >= 3 && stock <= 5) return "Bajo"
+  return "Normal"
 }
 
 const labelStyle = {
@@ -835,6 +750,54 @@ const miniBadge = {
   background: "rgba(212, 175, 55, 0.14)",
   color: "#7a5b00",
   border: "1px solid rgba(212, 175, 55, 0.24)",
+}
+
+const badgeCritico = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "6px 10px",
+  borderRadius: "999px",
+  fontSize: "12px",
+  fontWeight: "bold" as const,
+  background: "#fef2f2",
+  color: "#991b1b",
+  border: "1px solid #fecaca",
+}
+
+const badgeBajo = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "6px 10px",
+  borderRadius: "999px",
+  fontSize: "12px",
+  fontWeight: "bold" as const,
+  background: "#fff7ed",
+  color: "#9a3412",
+  border: "1px solid #fed7aa",
+}
+
+const badgeAgotado = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "6px 10px",
+  borderRadius: "999px",
+  fontSize: "12px",
+  fontWeight: "bold" as const,
+  background: "#f3f4f6",
+  color: "#4b5563",
+  border: "1px solid #d1d5db",
+}
+
+const badgeNormal = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "6px 10px",
+  borderRadius: "999px",
+  fontSize: "12px",
+  fontWeight: "bold" as const,
+  background: "#ecfdf3",
+  color: "#166534",
+  border: "1px solid #bbf7d0",
 }
 
 const smallActionBtn = {

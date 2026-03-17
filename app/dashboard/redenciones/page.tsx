@@ -34,6 +34,7 @@ type GrupoRedencion = {
   reward_names: string[]
   points_total: number
   status: string
+  item_count: number
 }
 
 export default function RedencionesPage() {
@@ -55,10 +56,9 @@ export default function RedencionesPage() {
   }
 
   const cargarRedenciones = async () => {
-    try {
-      setCargando(true)
-      setMensaje("")
+    setCargando(true)
 
+    try {
       const sessionResponse = await supabase.auth.getSession()
       const session = sessionResponse.data.session
       const sessionError = sessionResponse.error
@@ -118,7 +118,7 @@ export default function RedencionesPage() {
 
   useEffect(() => {
     cargarRedenciones()
-  }, [router])
+  }, [])
 
   const grupos = useMemo(() => {
     const grouped = new Map<string, GrupoRedencion>()
@@ -143,6 +143,7 @@ export default function RedencionesPage() {
           reward_names: [],
           points_total: 0,
           status: redencion.status,
+          item_count: 0,
         })
       }
 
@@ -150,6 +151,7 @@ export default function RedencionesPage() {
 
       current.reward_names.push(redencion.reward_name)
       current.points_total += Number(redencion.points_used || 0)
+      current.item_count += 1
 
       if (current.status !== redencion.status) {
         current.status = "mixed"
@@ -169,13 +171,13 @@ export default function RedencionesPage() {
     return status
   }
 
-  const describirEstado = (status: string) => {
-    if (status === "requested") return "Tu solicitud fue registrada y está pendiente de gestión."
-    if (status === "approved") return "Tu solicitud fue aprobada y está en proceso interno."
-    if (status === "shipped") return "Tu solicitud ya fue despachada."
-    if (status === "delivered") return "Tu solicitud ya fue entregada."
+  const descripcionEstado = (status: string) => {
+    if (status === "requested") return "Tu solicitud fue registrada y está pendiente de revisión."
+    if (status === "approved") return "Tu solicitud ya fue aprobada por administración."
+    if (status === "shipped") return "Tus premios ya fueron despachados o van en camino con tu pedido."
+    if (status === "delivered") return "Tus premios ya fueron entregados."
     if (status === "cancelled") return "Tu solicitud fue cancelada."
-    if (status === "mixed") return "Tu solicitud tiene ítems con estados diferentes."
+    if (status === "mixed") return "Esta solicitud tiene ítems con estados diferentes."
     return "Consulta el estado actual de tu solicitud."
   }
 
@@ -251,7 +253,7 @@ export default function RedencionesPage() {
       <InfoPopup
         storageKey="popup-mis-redenciones"
         title="Estado de tus redenciones"
-        message="Aquí puedes revisar el estado de tus solicitudes de premios. Recuerda que los ítems redimidos serán enviados con el siguiente pedido que realices."
+        message="Aquí puedes revisar el estado de tus solicitudes de premios. Recuerda que los ítems aprobados o enviados se despachan junto con el siguiente pedido que realices."
       />
 
       <main
@@ -359,45 +361,6 @@ export default function RedencionesPage() {
 
           <section
             style={{
-              background: "#fff",
-              borderRadius: "24px",
-              padding: "22px",
-              boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
-              border: "1px solid rgba(0,0,0,0.04)",
-              marginBottom: "22px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                gap: "12px",
-                alignItems: "flex-start",
-                flexWrap: "wrap",
-              }}
-            >
-              <span
-                style={{
-                  display: "inline-flex",
-                  padding: "6px 10px",
-                  borderRadius: "999px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  background: "rgba(212, 175, 55, 0.14)",
-                  color: "#7a5b00",
-                  border: "1px solid rgba(212, 175, 55, 0.24)",
-                }}
-              >
-                Información importante
-              </span>
-
-              <p style={{ margin: 0, color: "#111", lineHeight: 1.6, fontSize: "15px" }}>
-                Aquí puedes revisar el estado de cada solicitud de redención. Los premios o ítems aprobados serán enviados con el siguiente pedido que realices.
-              </p>
-            </div>
-          </section>
-
-          <section
-            style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
               gap: "16px",
@@ -442,12 +405,7 @@ export default function RedencionesPage() {
               </div>
             </section>
           ) : (
-            <section
-              style={{
-                display: "grid",
-                gap: "16px",
-              }}
-            >
+            <section style={{ display: "grid", gap: "16px" }}>
               {grupos.map((grupo) => (
                 <article
                   key={grupo.key}
@@ -498,22 +456,12 @@ export default function RedencionesPage() {
                       gap: "14px",
                     }}
                   >
-                    <InfoItem
-                      label="Premios solicitados"
-                      value={resumirPremios(grupo.reward_names).join(" · ")}
-                    />
-                    <InfoItem
-                      label="Puntos usados"
-                      value={String(grupo.points_total)}
-                    />
-                    <InfoItem
-                      label="Estado actual"
-                      value={traducirEstado(grupo.status)}
-                    />
-                    <InfoItem
-                      label="Detalle"
-                      value={describirEstado(grupo.status)}
-                    />
+                    <InfoItem label="Solicitud ID" value={grupo.group_id} />
+                    <InfoItem label="Cantidad de ítems" value={String(grupo.item_count)} />
+                    <InfoItem label="Puntos usados" value={String(grupo.points_total)} />
+                    <InfoItem label="Estado actual" value={traducirEstado(grupo.status)} />
+                    <InfoItem label="Detalle" value={descripcionEstado(grupo.status)} />
+                    <InfoItem label="Premios" value={resumirPremios(grupo.reward_names).join(" · ")} />
                   </div>
                 </article>
               ))}
@@ -574,7 +522,15 @@ function InfoItem({ label, value }: { label: string; value: string }) {
       <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
         {label}
       </p>
-      <p style={{ margin: 0, fontSize: "16px", color: "#111", lineHeight: 1.5 }}>
+      <p
+        style={{
+          margin: 0,
+          fontSize: "16px",
+          color: "#111",
+          lineHeight: 1.5,
+          wordBreak: "break-word",
+        }}
+      >
         {value}
       </p>
     </div>

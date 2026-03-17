@@ -37,6 +37,7 @@ export default function AdminDashboardPage() {
   const [facturasPendientes, setFacturasPendientes] = useState(0)
   const [redencionesPendientes, setRedencionesPendientes] = useState(0)
   const [clientesActivos, setClientesActivos] = useState(0)
+  const [clientesPendientes, setClientesPendientes] = useState(0)
   const [premiosStockCritico, setPremiosStockCritico] = useState(0)
   const [premiosStockBajo, setPremiosStockBajo] = useState(0)
 
@@ -90,6 +91,10 @@ export default function AdminDashboardPage() {
       perfilesData.filter((perfil) => perfil.is_active && perfil.is_approved).length
     )
 
+    setClientesPendientes(
+      perfilesData.filter((perfil) => perfil.is_active && !perfil.is_approved).length
+    )
+
     setPremiosStockCritico(
       premiosData.filter(
         (premio) =>
@@ -121,16 +126,9 @@ export default function AdminDashboardPage() {
     }
   }, [autorizado])
 
-  const refrescarPantalla = () => {
-    cargarResumen()
-  }
-
   if (!autorizado) {
     return (
-      <main
-        className="pysta-page"
-        style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
-      >
+      <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div className="pysta-card" style={{ padding: "24px 28px" }}>
           Validando acceso...
         </div>
@@ -143,14 +141,7 @@ export default function AdminDashboardPage() {
       <div className="pysta-shell" style={{ maxWidth: "1380px" }}>
         <AdminMenu />
 
-        <section
-          className="pysta-card"
-          style={{
-            padding: "30px",
-            marginBottom: "22px",
-            background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
-          }}
-        >
+        <section className="pysta-card" style={{ padding: "30px", marginBottom: "22px", background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)" }}>
           <div className="pysta-topbar">
             <div style={{ display: "grid", gap: "10px" }}>
               <span className="pysta-badge">Panel administrativo</span>
@@ -161,7 +152,7 @@ export default function AdminDashboardPage() {
             </div>
 
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <button onClick={refrescarPantalla} className="pysta-btn pysta-btn-light">
+              <button onClick={cargarResumen} className="pysta-btn pysta-btn-light">
                 Refrescar
               </button>
 
@@ -178,41 +169,10 @@ export default function AdminDashboardPage() {
             marginBottom: "22px",
           }}
         >
-          <ResumenLinkCard
-            href="/admin/facturas"
-            titulo="Facturas pendientes"
-            valor={cargando ? "..." : String(facturasPendientes)}
-            descripcion="Por revisar o validar"
-            tono={facturasPendientes > 0 ? "warning" : "normal"}
-            badge={facturasPendientes > 0 ? "Atención" : ""}
-          />
-
-          <ResumenLinkCard
-            href="/admin/redenciones"
-            titulo="Redenciones pendientes"
-            valor={cargando ? "..." : String(redencionesPendientes)}
-            descripcion="Solicitudes por gestionar"
-            tono={redencionesPendientes > 0 ? "warning" : "normal"}
-            badge={redencionesPendientes > 0 ? "Atención" : ""}
-          />
-
-          <ResumenLinkCard
-            href="/admin/clientes"
-            titulo="Clientes activos"
-            valor={cargando ? "..." : String(clientesActivos)}
-            descripcion="Aprobados y habilitados"
-            tono="normal"
-            badge=""
-          />
-
-          <ResumenLinkCard
-            href="/admin/premios"
-            titulo="Premios con stock crítico"
-            valor={cargando ? "..." : String(premiosStockCritico)}
-            descripcion="Stock entre 1 y 2"
-            tono={premiosStockCritico > 0 ? "danger" : "normal"}
-            badge={premiosStockCritico > 0 ? "Crítico" : ""}
-          />
+          <ResumenLinkCard href="/admin/facturas" titulo="Facturas pendientes" valor={cargando ? "..." : String(facturasPendientes)} descripcion="Por revisar o validar" tono={facturasPendientes > 0 ? "warning" : "normal"} badge={facturasPendientes > 0 ? "Atención" : ""} />
+          <ResumenLinkCard href="/admin/redenciones" titulo="Redenciones pendientes" valor={cargando ? "..." : String(redencionesPendientes)} descripcion="Solicitudes por gestionar" tono={redencionesPendientes > 0 ? "warning" : "normal"} badge={redencionesPendientes > 0 ? "Atención" : ""} />
+          <ResumenLinkCard href="/admin/clientes" titulo="Clientes pendientes" valor={cargando ? "..." : String(clientesPendientes)} descripcion="Pendientes por aprobar" tono={clientesPendientes > 0 ? "warning" : "normal"} badge={clientesPendientes > 0 ? "Revisar" : ""} />
+          <ResumenLinkCard href="/admin/premios" titulo="Premios con stock crítico" valor={cargando ? "..." : String(premiosStockCritico)} descripcion="Stock entre 1 y 2" tono={premiosStockCritico > 0 ? "danger" : "normal"} badge={premiosStockCritico > 0 ? "Crítico" : ""} />
         </section>
 
         <section
@@ -223,80 +183,10 @@ export default function AdminDashboardPage() {
             marginBottom: "22px",
           }}
         >
-          <ResumenLinkCard
-            href="/admin/premios"
-            titulo="Premios con stock bajo"
-            valor={cargando ? "..." : String(premiosStockBajo)}
-            descripcion="Stock entre 3 y 5"
-            tono={premiosStockBajo > 0 ? "warning" : "normal"}
-            badge={premiosStockBajo > 0 ? "Bajo" : ""}
-          />
-
-          <ResumenLinkCard
-            href="/admin/facturas"
-            titulo="Facturas totales"
-            valor={cargando ? "..." : String(facturasTotales)}
-            descripcion="Histórico cargado"
-            tono="normal"
-            badge=""
-          />
-
-          <ResumenLinkCard
-            href="/admin/redenciones"
-            titulo="Redenciones totales"
-            valor={cargando ? "..." : String(redencionesTotales)}
-            descripcion="Ítems registrados"
-            tono="normal"
-            badge=""
-          />
-
-          <ResumenLinkCard
-            href="/admin/premios"
-            titulo="Premios activos"
-            valor={cargando ? "..." : String(premiosActivos)}
-            descripcion="Disponibles en catálogo"
-            tono="normal"
-            badge=""
-          />
-        </section>
-
-        <section
-          style={{
-            background: "#fff",
-            borderRadius: "24px",
-            padding: "22px",
-            boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
-            border: "1px solid rgba(0,0,0,0.04)",
-            marginBottom: "22px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              gap: "12px",
-              alignItems: "flex-start",
-              flexWrap: "wrap",
-            }}
-          >
-            <span
-              style={{
-                display: "inline-flex",
-                padding: "6px 10px",
-                borderRadius: "999px",
-                fontSize: "12px",
-                fontWeight: 700,
-                background: "rgba(212, 175, 55, 0.14)",
-                color: "#7a5b00",
-                border: "1px solid rgba(212, 175, 55, 0.24)",
-              }}
-            >
-              Enfoque rápido
-            </span>
-
-            <p style={{ margin: 0, color: "#111", lineHeight: 1.6, fontSize: "15px" }}>
-              Si ves facturas pendientes o redenciones pendientes, esas deberían ser las primeras tareas del día. Si hay premios con stock crítico o stock bajo, conviene revisarlos antes de que se agoten.
-            </p>
-          </div>
+          <ResumenLinkCard href="/admin/premios" titulo="Premios con stock bajo" valor={cargando ? "..." : String(premiosStockBajo)} descripcion="Stock entre 3 y 5" tono={premiosStockBajo > 0 ? "warning" : "normal"} badge={premiosStockBajo > 0 ? "Bajo" : ""} />
+          <ResumenLinkCard href="/admin/facturas" titulo="Facturas totales" valor={cargando ? "..." : String(facturasTotales)} descripcion="Histórico cargado" tono="normal" badge="" />
+          <ResumenLinkCard href="/admin/redenciones" titulo="Redenciones totales" valor={cargando ? "..." : String(redencionesTotales)} descripcion="Ítems registrados" tono="normal" badge="" />
+          <ResumenLinkCard href="/admin/premios" titulo="Premios activos" valor={cargando ? "..." : String(premiosActivos)} descripcion="Disponibles en catálogo" tono="normal" badge="" />
         </section>
 
         <section className="pysta-card" style={{ padding: "24px" }}>
@@ -314,41 +204,12 @@ export default function AdminDashboardPage() {
               gap: "16px",
             }}
           >
-            <MenuCard
-              href="/admin/facturas"
-              titulo="Facturas"
-              descripcion="Revisa, aprueba, rechaza o elimina facturas."
-            />
-
-            <MenuCard
-              href="/admin/redenciones"
-              titulo="Redenciones"
-              descripcion="Gestiona solicitudes, envíos, entregas y cancelaciones."
-            />
-
-            <MenuCard
-              href="/admin/premios"
-              titulo="Premios"
-              descripcion="Administra catálogo, stock y límites por premio."
-            />
-
-            <MenuCard
-              href="/admin/clientes"
-              titulo="Clientes"
-              descripcion="Consulta y edita clientes registrados."
-            />
-
-            <MenuCard
-              href="/admin/configuracion"
-              titulo="Configuración"
-              descripcion="Ajusta reglas generales del sistema."
-            />
-
-            <MenuCard
-              href="/admin/asesores"
-              titulo="Asesores"
-              descripcion="Gestiona asesores y asignaciones."
-            />
+            <MenuCard href="/admin/facturas" titulo="Facturas" descripcion="Revisa, aprueba, rechaza o elimina facturas." />
+            <MenuCard href="/admin/redenciones" titulo="Redenciones" descripcion="Gestiona solicitudes, envíos, entregas y cancelaciones." />
+            <MenuCard href="/admin/premios" titulo="Premios" descripcion="Administra catálogo, stock y límites por premio." />
+            <MenuCard href="/admin/clientes" titulo="Clientes" descripcion="Consulta y edita clientes registrados." />
+            <MenuCard href="/admin/configuracion" titulo="Configuración" descripcion="Ajusta reglas generales del sistema." />
+            <MenuCard href="/admin/asesores" titulo="Asesores" descripcion="Gestiona asesores y asignaciones." />
           </div>
         </section>
       </div>
@@ -413,14 +274,7 @@ function ResumenLinkCard({
         display: "block",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: "10px",
-          alignItems: "flex-start",
-        }}
-      >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "flex-start" }}>
         <p style={{ margin: 0, color: estilos.titleColor, fontSize: "14px", fontWeight: 700 }}>
           {titulo}
         </p>
@@ -443,13 +297,8 @@ function ResumenLinkCard({
         ) : null}
       </div>
 
-      <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>
-        {valor}
-      </h3>
-
-      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>
-        {descripcion}
-      </p>
+      <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
+      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
     </a>
   )
 }
@@ -478,12 +327,8 @@ function MenuCard({
         minWidth: 0,
       }}
     >
-      <h3 style={{ margin: 0, fontSize: "22px", color: "#111", lineHeight: 1.2 }}>
-        {titulo}
-      </h3>
-      <p style={{ margin: "10px 0 0 0", color: "#6b7280", lineHeight: 1.5 }}>
-        {descripcion}
-      </p>
+      <h3 style={{ margin: 0, fontSize: "22px", color: "#111", lineHeight: 1.2 }}>{titulo}</h3>
+      <p style={{ margin: "10px 0 0 0", color: "#6b7280", lineHeight: 1.5 }}>{descripcion}</p>
     </a>
   )
 }
