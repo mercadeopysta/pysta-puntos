@@ -230,7 +230,7 @@ export default function NuevaFacturaPage() {
   }, [amountWithoutVat])
 
   const valorFormateado = useMemo(() => {
-    if (valorNumerico <= 0) return ""
+    if (valorNumerico <= 0) return "$0"
     return `$${valorNumerico.toLocaleString("es-CO")}`
   }, [valorNumerico])
 
@@ -396,16 +396,20 @@ export default function NuevaFacturaPage() {
                 />
               </Field>
 
-              <Field label="Valor sin IVA">
+              <div>
+                <label style={labelStyle}>Valor sin IVA</label>
                 <input
                   className="campo-pysta"
                   type="text"
                   inputMode="numeric"
                   placeholder="Ej: 1000000"
-                  value={valorFormateado}
+                  value={amountWithoutVat}
                   onChange={(e) => handleAmountChange(e.target.value)}
                 />
-              </Field>
+                <p style={helperText}>
+                  Vista en pesos: {valorFormateado}
+                </p>
+              </div>
 
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={labelStyle}>Adjuntar foto o PDF de la factura *</label>
@@ -527,7 +531,7 @@ export default function NuevaFacturaPage() {
               A medida que escribes el valor, aquí verás una estimación sencilla antes de enviar tu factura.
             </p>
 
-            <TipCard texto={`Valor ingresado: ${valorFormateado || "$0"}`} />
+            <TipCard texto={`Valor ingresado: ${valorFormateado}`} />
             <TipCard texto={`Puntos aproximados: ${puntosEstimados}`} />
           </aside>
         </div>
@@ -593,6 +597,13 @@ const labelStyle = {
   color: "#111",
   fontWeight: "bold" as const,
   fontSize: "14px",
+}
+
+const helperText = {
+  color: "#6b7280",
+  fontSize: "13px",
+  marginTop: "8px",
+  lineHeight: 1.5,
 }
 
 const primaryButton = {
