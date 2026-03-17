@@ -189,6 +189,7 @@ export default function DashboardPage() {
           justifyContent: "center",
           fontFamily: "Arial, sans-serif",
           background: "#f5f5f5",
+          padding: "20px",
         }}
       >
         Validando acceso...
@@ -207,7 +208,7 @@ export default function DashboardPage() {
       style={{
         minHeight: "100vh",
         background: "linear-gradient(180deg, #f5f5f5 0%, #ececec 100%)",
-        padding: "32px 20px",
+        padding: "20px 14px",
         fontFamily: "Arial, sans-serif",
       }}
     >
@@ -216,7 +217,7 @@ export default function DashboardPage() {
           style={{
             background: "#ffffff",
             borderRadius: "24px",
-            padding: "28px",
+            padding: "24px",
             boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
             marginBottom: "22px",
             border: "1px solid rgba(0,0,0,0.04)",
@@ -244,6 +245,7 @@ export default function DashboardPage() {
                   justifyContent: "center",
                   overflow: "hidden",
                   boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
+                  flexShrink: 0,
                 }}
               >
                 <img
@@ -257,7 +259,7 @@ export default function DashboardPage() {
                 />
               </div>
 
-              <div style={{ display: "grid", gap: "8px" }}>
+              <div style={{ display: "grid", gap: "8px", minWidth: 0 }}>
                 <span
                   style={{
                     display: "inline-flex",
@@ -274,11 +276,11 @@ export default function DashboardPage() {
                   Programa de puntos Pysta
                 </span>
 
-                <h1 style={{ margin: 0, fontSize: "34px", color: "#111" }}>
+                <h1 style={{ margin: 0, fontSize: "clamp(28px, 5vw, 34px)", color: "#111", lineHeight: 1.1 }}>
                   Hola{nombre ? `, ${nombre}` : ""}
                 </h1>
 
-                <p style={{ margin: 0, color: "#6b7280", fontSize: "15px" }}>
+                <p style={{ margin: 0, color: "#6b7280", fontSize: "15px", lineHeight: 1.5 }}>
                   {tipoCliente ? `Tipo de cliente: ${tipoCliente}` : "Bienvenido a tu panel de beneficios"}
                 </p>
               </div>
@@ -322,14 +324,14 @@ export default function DashboardPage() {
           style={{
             background: "#fff",
             borderRadius: "24px",
-            padding: "26px",
+            padding: "24px",
             boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
             border: "1px solid rgba(0,0,0,0.04)",
           }}
         >
           <div style={{ marginBottom: "18px" }}>
             <h2 style={{ margin: 0, fontSize: "26px", color: "#111" }}>Accesos rápidos</h2>
-            <p style={{ margin: "8px 0 0 0", color: "#6b7280" }}>
+            <p style={{ margin: "8px 0 0 0", color: "#6b7280", lineHeight: 1.5 }}>
               Gestiona tus facturas, premios y redenciones desde aquí.
             </p>
           </div>
@@ -388,11 +390,22 @@ function ResumenCard({
         padding: "22px",
         boxShadow: "0 10px 28px rgba(0,0,0,0.07)",
         border: "1px solid rgba(0,0,0,0.04)",
+        minWidth: 0,
       }}
     >
       <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
-      <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
-      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
+      <h3
+        style={{
+          margin: "10px 0 8px 0",
+          fontSize: "clamp(28px, 6vw, 34px)",
+          color: "#111",
+          lineHeight: 1.1,
+          wordBreak: "break-word",
+        }}
+      >
+        {valor}
+      </h3>
+      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.45 }}>{descripcion}</p>
     </div>
   )
 }
@@ -418,9 +431,10 @@ function MenuCard({
         boxShadow: "0 10px 24px rgba(0,0,0,0.06)",
         border: "1px solid #ececec",
         display: "block",
+        minWidth: 0,
       }}
     >
-      <h3 style={{ margin: 0, fontSize: "22px", color: "#111" }}>{titulo}</h3>
+      <h3 style={{ margin: 0, fontSize: "22px", color: "#111", lineHeight: 1.2 }}>{titulo}</h3>
       <p style={{ margin: "10px 0 0 0", color: "#6b7280", lineHeight: 1.5 }}>{descripcion}</p>
     </Link>
   )
