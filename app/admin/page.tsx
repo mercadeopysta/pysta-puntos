@@ -37,6 +37,7 @@ export default function AdminDashboardPage() {
   const [facturasPendientes, setFacturasPendientes] = useState(0)
   const [redencionesPendientes, setRedencionesPendientes] = useState(0)
   const [clientesActivos, setClientesActivos] = useState(0)
+  const [premiosStockCritico, setPremiosStockCritico] = useState(0)
   const [premiosStockBajo, setPremiosStockBajo] = useState(0)
 
   const [facturasTotales, setFacturasTotales] = useState(0)
@@ -89,8 +90,22 @@ export default function AdminDashboardPage() {
       perfilesData.filter((perfil) => perfil.is_active && perfil.is_approved).length
     )
 
+    setPremiosStockCritico(
+      premiosData.filter(
+        (premio) =>
+          premio.is_active &&
+          Number(premio.stock || 0) >= 1 &&
+          Number(premio.stock || 0) <= 2
+      ).length
+    )
+
     setPremiosStockBajo(
-      premiosData.filter((premio) => premio.is_active && Number(premio.stock || 0) > 0 && Number(premio.stock || 0) <= 5).length
+      premiosData.filter(
+        (premio) =>
+          premio.is_active &&
+          Number(premio.stock || 0) >= 3 &&
+          Number(premio.stock || 0) <= 5
+      ).length
     )
 
     setPremiosActivos(
@@ -163,25 +178,40 @@ export default function AdminDashboardPage() {
             marginBottom: "22px",
           }}
         >
-          <ResumenCard
+          <ResumenLinkCard
+            href="/admin/facturas"
             titulo="Facturas pendientes"
             valor={cargando ? "..." : String(facturasPendientes)}
             descripcion="Por revisar o validar"
+            tono={facturasPendientes > 0 ? "warning" : "normal"}
+            badge={facturasPendientes > 0 ? "Atención" : ""}
           />
-          <ResumenCard
+
+          <ResumenLinkCard
+            href="/admin/redenciones"
             titulo="Redenciones pendientes"
             valor={cargando ? "..." : String(redencionesPendientes)}
             descripcion="Solicitudes por gestionar"
+            tono={redencionesPendientes > 0 ? "warning" : "normal"}
+            badge={redencionesPendientes > 0 ? "Atención" : ""}
           />
-          <ResumenCard
+
+          <ResumenLinkCard
+            href="/admin/clientes"
             titulo="Clientes activos"
             valor={cargando ? "..." : String(clientesActivos)}
             descripcion="Aprobados y habilitados"
+            tono="normal"
+            badge=""
           />
-          <ResumenCard
-            titulo="Premios con stock bajo"
-            valor={cargando ? "..." : String(premiosStockBajo)}
-            descripcion="Stock entre 1 y 5"
+
+          <ResumenLinkCard
+            href="/admin/premios"
+            titulo="Premios con stock crítico"
+            valor={cargando ? "..." : String(premiosStockCritico)}
+            descripcion="Stock entre 1 y 2"
+            tono={premiosStockCritico > 0 ? "danger" : "normal"}
+            badge={premiosStockCritico > 0 ? "Crítico" : ""}
           />
         </section>
 
@@ -193,20 +223,40 @@ export default function AdminDashboardPage() {
             marginBottom: "22px",
           }}
         >
-          <ResumenCard
+          <ResumenLinkCard
+            href="/admin/premios"
+            titulo="Premios con stock bajo"
+            valor={cargando ? "..." : String(premiosStockBajo)}
+            descripcion="Stock entre 3 y 5"
+            tono={premiosStockBajo > 0 ? "warning" : "normal"}
+            badge={premiosStockBajo > 0 ? "Bajo" : ""}
+          />
+
+          <ResumenLinkCard
+            href="/admin/facturas"
             titulo="Facturas totales"
             valor={cargando ? "..." : String(facturasTotales)}
             descripcion="Histórico cargado"
+            tono="normal"
+            badge=""
           />
-          <ResumenCard
+
+          <ResumenLinkCard
+            href="/admin/redenciones"
             titulo="Redenciones totales"
             valor={cargando ? "..." : String(redencionesTotales)}
             descripcion="Ítems registrados"
+            tono="normal"
+            badge=""
           />
-          <ResumenCard
+
+          <ResumenLinkCard
+            href="/admin/premios"
             titulo="Premios activos"
             valor={cargando ? "..." : String(premiosActivos)}
             descripcion="Disponibles en catálogo"
+            tono="normal"
+            badge=""
           />
         </section>
 
@@ -244,7 +294,7 @@ export default function AdminDashboardPage() {
             </span>
 
             <p style={{ margin: 0, color: "#111", lineHeight: 1.6, fontSize: "15px" }}>
-              Si ves facturas pendientes o redenciones pendientes, esas deberían ser las primeras tareas del día. Si hay premios con stock bajo, conviene revisarlos antes de que se agoten.
+              Si ves facturas pendientes o redenciones pendientes, esas deberían ser las primeras tareas del día. Si hay premios con stock crítico o stock bajo, conviene revisarlos antes de que se agoten.
             </p>
           </div>
         </section>
@@ -306,33 +356,101 @@ export default function AdminDashboardPage() {
   )
 }
 
-function ResumenCard({
+function ResumenLinkCard({
+  href,
   titulo,
   valor,
   descripcion,
+  tono,
+  badge,
 }: {
+  href: string
   titulo: string
   valor: string
   descripcion: string
+  tono: "normal" | "warning" | "danger"
+  badge: string
 }) {
+  const estilos =
+    tono === "danger"
+      ? {
+          background: "linear-gradient(180deg, #fff1f2 0%, #fffafa 100%)",
+          border: "1px solid #fecaca",
+          shadow: "0 12px 28px rgba(239, 68, 68, 0.12)",
+          titleColor: "#991b1b",
+          badgeBg: "#dc2626",
+          badgeColor: "#fff",
+        }
+      : tono === "warning"
+      ? {
+          background: "linear-gradient(180deg, #fff8e7 0%, #fffdf7 100%)",
+          border: "1px solid #f3d37a",
+          shadow: "0 12px 28px rgba(212, 175, 55, 0.14)",
+          titleColor: "#7a5b00",
+          badgeBg: "#d4af37",
+          badgeColor: "#111",
+        }
+      : {
+          background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
+          border: "1px solid rgba(0,0,0,0.04)",
+          shadow: "0 10px 28px rgba(0,0,0,0.07)",
+          titleColor: "#6b7280",
+          badgeBg: "",
+          badgeColor: "",
+        }
+
   return (
-    <div
-      className="pysta-card"
+    <a
+      href={href}
       style={{
+        textDecoration: "none",
+        color: "#111",
+        background: estilos.background,
+        borderRadius: "22px",
         padding: "22px",
-        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
+        boxShadow: estilos.shadow,
+        border: estilos.border,
+        display: "block",
       }}
     >
-      <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>
-        {titulo}
-      </p>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "10px",
+          alignItems: "flex-start",
+        }}
+      >
+        <p style={{ margin: 0, color: estilos.titleColor, fontSize: "14px", fontWeight: 700 }}>
+          {titulo}
+        </p>
+
+        {badge ? (
+          <span
+            style={{
+              display: "inline-flex",
+              padding: "5px 9px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: 700,
+              background: estilos.badgeBg,
+              color: estilos.badgeColor,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {badge}
+          </span>
+        ) : null}
+      </div>
+
       <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>
         {valor}
       </h3>
+
       <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>
         {descripcion}
       </p>
-    </div>
+    </a>
   )
 }
 

@@ -263,6 +263,43 @@ export default function PremiosPage() {
     }))
   }
 
+  const pluralizarNombrePremio = (nombre: string, cantidad: number) => {
+    const limpio = (nombre || "ítem").trim()
+
+    if (cantidad === 1) {
+      return limpio
+    }
+
+    const lower = limpio.toLowerCase()
+
+    if (lower.endsWith("s") || lower.endsWith("x")) {
+      return limpio
+    }
+
+    if (
+      lower.endsWith("a") ||
+      lower.endsWith("e") ||
+      lower.endsWith("i") ||
+      lower.endsWith("o") ||
+      lower.endsWith("u")
+    ) {
+      return `${limpio}s`
+    }
+
+    return `${limpio}es`
+  }
+
+  const construirMensajeRedencion = (premio: Premio, cantidad: number, agregadaAGrupo: boolean) => {
+    const nombreFormateado = pluralizarNombrePremio(premio.name || "ítem", cantidad)
+    const textoBase = `Redimiste ${cantidad} ${nombreFormateado} correctamente.`
+
+    if (agregadaAGrupo) {
+      return `${textoBase} Se agregó a tu solicitud actual.`
+    }
+
+    return `${textoBase} Se creó una nueva solicitud.`
+  }
+
   const handleRedimir = async (premio: Premio) => {
     setMensaje("")
 
@@ -347,11 +384,7 @@ export default function PremiosPage() {
       return
     }
 
-    setMensaje(
-      grupoActivo
-        ? "Premio agregado a tu solicitud actual."
-        : "Nueva solicitud registrada correctamente."
-    )
+    setMensaje(construirMensajeRedencion(premio, cantidad, Boolean(grupoActivo)))
 
     setCantidades((prev) => ({
       ...prev,
