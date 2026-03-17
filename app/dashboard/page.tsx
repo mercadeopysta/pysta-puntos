@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../lib/supabase"
 import LogoutButton from "../../components/LogoutButton"
+import InfoPopup from "../../components/InfoPopup"
 
 type FacturaSaldo = {
   amount_without_vat: number
@@ -179,6 +180,10 @@ export default function DashboardPage() {
     validarYCargar()
   }, [router])
 
+  const refrescarPantalla = () => {
+    window.location.reload()
+  }
+
   if (cargando) {
     return (
       <main
@@ -204,172 +209,244 @@ export default function DashboardPage() {
   const itemsDisponiblesMes = Math.max(limiteMensual - itemsRedimidosMes, 0)
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "linear-gradient(180deg, #f5f5f5 0%, #ececec 100%)",
-        padding: "20px 14px",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <div style={{ maxWidth: "1180px", margin: "0 auto" }}>
-        <section
-          style={{
-            background: "#ffffff",
-            borderRadius: "24px",
-            padding: "24px",
-            boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
-            marginBottom: "22px",
-            border: "1px solid rgba(0,0,0,0.04)",
-          }}
-        >
-          <div
+    <>
+      <InfoPopup
+        storageKey="popup-dashboard-cliente"
+        title="Información sobre tus premios"
+        message="Los premios o ítems redimidos serán enviados junto con el siguiente pedido que realices. También puedes revisar el estado de tus solicitudes en la sección Mis redenciones."
+      />
+
+      <main
+        style={{
+          minHeight: "100vh",
+          background: "linear-gradient(180deg, #f5f5f5 0%, #ececec 100%)",
+          padding: "20px 14px",
+          fontFamily: "Arial, sans-serif",
+        }}
+      >
+        <div style={{ maxWidth: "1180px", margin: "0 auto" }}>
+          <section
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: "18px",
-              flexWrap: "wrap",
+              background: "#ffffff",
+              borderRadius: "24px",
+              padding: "24px",
+              boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
+              marginBottom: "22px",
+              border: "1px solid rgba(0,0,0,0.04)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-              <div
-                style={{
-                  width: "84px",
-                  height: "84px",
-                  borderRadius: "18px",
-                  background: "#fff",
-                  border: "1px solid #e5e7eb",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  overflow: "hidden",
-                  boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
-                  flexShrink: 0,
-                }}
-              >
-                <img
-                  src="/logo-pysta.png"
-                  alt="Pysta"
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "18px",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+                <div
                   style={{
-                    maxWidth: "76px",
-                    maxHeight: "76px",
-                    objectFit: "contain",
-                  }}
-                />
-              </div>
-
-              <div style={{ display: "grid", gap: "8px", minWidth: 0 }}>
-                <span
-                  style={{
-                    display: "inline-flex",
-                    width: "fit-content",
-                    padding: "6px 12px",
-                    borderRadius: "999px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    background: "rgba(212, 175, 55, 0.14)",
-                    color: "#7a5b00",
-                    border: "1px solid rgba(212, 175, 55, 0.24)",
+                    width: "84px",
+                    height: "84px",
+                    borderRadius: "18px",
+                    background: "#fff",
+                    border: "1px solid #e5e7eb",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                    boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
+                    flexShrink: 0,
                   }}
                 >
-                  Programa de puntos Pysta
-                </span>
+                  <img
+                    src="/logo-pysta.png"
+                    alt="Pysta"
+                    style={{
+                      maxWidth: "76px",
+                      maxHeight: "76px",
+                      objectFit: "contain",
+                    }}
+                  />
+                </div>
 
-                <h1 style={{ margin: 0, fontSize: "clamp(28px, 5vw, 34px)", color: "#111", lineHeight: 1.1 }}>
-                  Hola{nombre ? `, ${nombre}` : ""}
-                </h1>
+                <div style={{ display: "grid", gap: "8px", minWidth: 0 }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      width: "fit-content",
+                      padding: "6px 12px",
+                      borderRadius: "999px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      background: "rgba(212, 175, 55, 0.14)",
+                      color: "#7a5b00",
+                      border: "1px solid rgba(212, 175, 55, 0.24)",
+                    }}
+                  >
+                    Programa de puntos Pysta
+                  </span>
 
-                <p style={{ margin: 0, color: "#6b7280", fontSize: "15px", lineHeight: 1.5 }}>
-                  {tipoCliente ? `Tipo de cliente: ${tipoCliente}` : "Bienvenido a tu panel de beneficios"}
-                </p>
+                  <h1
+                    style={{
+                      margin: 0,
+                      fontSize: "clamp(28px, 5vw, 34px)",
+                      color: "#111",
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    Hola{nombre ? `, ${nombre}` : ""}
+                  </h1>
+
+                  <p style={{ margin: 0, color: "#6b7280", fontSize: "15px", lineHeight: 1.5 }}>
+                    {tipoCliente ? `Tipo de cliente: ${tipoCliente}` : "Bienvenido a tu panel de beneficios"}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button
+                  onClick={refrescarPantalla}
+                  style={{
+                    background: "#e9e9e9",
+                    color: "#111",
+                    border: "none",
+                    padding: "12px 18px",
+                    borderRadius: "14px",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                  }}
+                >
+                  Refrescar
+                </button>
+
+                <LogoutButton />
               </div>
             </div>
+          </section>
 
-            <LogoutButton />
-          </div>
-        </section>
-
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "16px",
-            marginBottom: "24px",
-          }}
-        >
-          <ResumenCard
-            titulo="Puntos disponibles"
-            valor={String(puntosDisponibles)}
-            descripcion="Los que puedes usar ahora mismo"
-          />
-          <ResumenCard
-            titulo="Puntos redimidos"
-            valor={String(puntosRedimidos)}
-            descripcion="Total de puntos ya usados"
-          />
-          <ResumenCard
-            titulo="Ítems redimidos este mes"
-            valor={`${itemsRedimidosMes}/${limiteMensual}`}
-            descripcion="Control mensual de redenciones"
-          />
-          <ResumenCard
-            titulo="Ítems disponibles este mes"
-            valor={String(itemsDisponiblesMes)}
-            descripcion="Lo que aún puedes redimir"
-          />
-        </section>
-
-        <section
-          style={{
-            background: "#fff",
-            borderRadius: "24px",
-            padding: "24px",
-            boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
-            border: "1px solid rgba(0,0,0,0.04)",
-          }}
-        >
-          <div style={{ marginBottom: "18px" }}>
-            <h2 style={{ margin: 0, fontSize: "26px", color: "#111" }}>Accesos rápidos</h2>
-            <p style={{ margin: "8px 0 0 0", color: "#6b7280", lineHeight: 1.5 }}>
-              Gestiona tus facturas, premios y redenciones desde aquí.
-            </p>
-          </div>
-
-          <div
+          <section
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
               gap: "16px",
+              marginBottom: "24px",
             }}
           >
-            <MenuCard
-              href="/dashboard/facturas/nueva"
-              titulo="Registrar factura"
-              descripcion="Sube una nueva factura para validación."
+            <ResumenCard
+              titulo="Puntos disponibles"
+              valor={String(puntosDisponibles)}
+              descripcion="Los que puedes usar ahora mismo"
             />
+            <ResumenCard
+              titulo="Puntos redimidos"
+              valor={String(puntosRedimidos)}
+              descripcion="Total de puntos ya usados"
+            />
+            <ResumenCard
+              titulo="Ítems redimidos este mes"
+              valor={`${itemsRedimidosMes}/${limiteMensual}`}
+              descripcion="Control mensual de redenciones"
+            />
+            <ResumenCard
+              titulo="Ítems disponibles este mes"
+              valor={String(itemsDisponiblesMes)}
+              descripcion="Lo que aún puedes redimir"
+            />
+          </section>
 
-            <MenuCard
-              href="/dashboard/premios"
-              titulo="Ver premios"
-              descripcion="Consulta premios, puntos y disponibilidad."
-            />
+          <section
+            style={{
+              background: "#fff",
+              borderRadius: "24px",
+              padding: "22px",
+              boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
+              border: "1px solid rgba(0,0,0,0.04)",
+              marginBottom: "24px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                alignItems: "flex-start",
+                flexWrap: "wrap",
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-flex",
+                  padding: "6px 10px",
+                  borderRadius: "999px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  background: "rgba(212, 175, 55, 0.14)",
+                  color: "#7a5b00",
+                  border: "1px solid rgba(212, 175, 55, 0.24)",
+                }}
+              >
+                Información importante
+              </span>
 
-            <MenuCard
-              href="/dashboard/redenciones"
-              titulo="Mis redenciones"
-              descripcion="Revisa el estado de tus solicitudes."
-            />
+              <p style={{ margin: 0, color: "#111", lineHeight: 1.6, fontSize: "15px" }}>
+                Los premios o ítems redimidos serán enviados junto con el siguiente pedido que realices.
+              </p>
+            </div>
+          </section>
 
-            <MenuCard
-              href="/dashboard/mis-facturas"
-              titulo="Mis facturas"
-              descripcion="Mira el historial y estado de tus facturas."
-            />
-          </div>
-        </section>
-      </div>
-    </main>
+          <section
+            style={{
+              background: "#fff",
+              borderRadius: "24px",
+              padding: "24px",
+              boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
+              border: "1px solid rgba(0,0,0,0.04)",
+            }}
+          >
+            <div style={{ marginBottom: "18px" }}>
+              <h2 style={{ margin: 0, fontSize: "26px", color: "#111" }}>Accesos rápidos</h2>
+              <p style={{ margin: "8px 0 0 0", color: "#6b7280", lineHeight: 1.5 }}>
+                Gestiona tus facturas, premios y redenciones desde aquí.
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+                gap: "16px",
+              }}
+            >
+              <MenuCard
+                href="/dashboard/facturas/nueva"
+                titulo="Registrar factura"
+                descripcion="Sube una nueva factura para validación."
+              />
+
+              <MenuCard
+                href="/dashboard/premios"
+                titulo="Ver premios"
+                descripcion="Consulta premios, puntos y disponibilidad."
+              />
+
+              <MenuCard
+                href="/dashboard/redenciones"
+                titulo="Mis redenciones"
+                descripcion="Revisa el estado de tus solicitudes."
+              />
+
+              <MenuCard
+                href="/dashboard/mis-facturas"
+                titulo="Mis facturas"
+                descripcion="Mira el historial y estado de tus facturas."
+              />
+            </div>
+          </section>
+        </div>
+      </main>
+    </>
   )
 }
 

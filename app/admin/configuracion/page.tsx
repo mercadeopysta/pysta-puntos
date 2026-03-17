@@ -11,7 +11,6 @@ type Settings = {
   id: string
   redemption_percentage: number
   monthly_redemption_limit: number
-  monthly_item_limit_per_reward: number
   points_expiration_enabled: boolean
   points_expiration_months: number
   intro_instructions: string
@@ -24,7 +23,6 @@ export default function AdminConfiguracionPage() {
   const [settingsId, setSettingsId] = useState("")
   const [redemptionPercentage, setRedemptionPercentage] = useState("")
   const [monthlyLimit, setMonthlyLimit] = useState("")
-  const [monthlyItemLimitPerReward, setMonthlyItemLimitPerReward] = useState("")
   const [expirationEnabled, setExpirationEnabled] = useState(false)
   const [expirationMonths, setExpirationMonths] = useState("")
   const [introInstructions, setIntroInstructions] = useState("")
@@ -65,7 +63,6 @@ export default function AdminConfiguracionPage() {
       setSettingsId(String(config.id))
       setRedemptionPercentage(String(config.redemption_percentage))
       setMonthlyLimit(String(config.monthly_redemption_limit))
-      setMonthlyItemLimitPerReward(String(config.monthly_item_limit_per_reward || 0))
       setExpirationEnabled(config.points_expiration_enabled)
       setExpirationMonths(String(config.points_expiration_months))
       setIntroInstructions(config.intro_instructions || "")
@@ -84,7 +81,7 @@ export default function AdminConfiguracionPage() {
       return
     }
 
-    if (!redemptionPercentage || !monthlyLimit || !expirationMonths || monthlyItemLimitPerReward === "") {
+    if (!redemptionPercentage || !monthlyLimit || !expirationMonths) {
       setTipoMensaje("warning")
       setMensaje("Completa todos los campos obligatorios.")
       return
@@ -95,7 +92,6 @@ export default function AdminConfiguracionPage() {
       .update({
         redemption_percentage: Number(redemptionPercentage),
         monthly_redemption_limit: Number(monthlyLimit),
-        monthly_item_limit_per_reward: Number(monthlyItemLimitPerReward),
         points_expiration_enabled: expirationEnabled,
         points_expiration_months: Number(expirationMonths),
         intro_instructions: introInstructions,
@@ -115,16 +111,14 @@ export default function AdminConfiguracionPage() {
   const resumen = useMemo(() => {
     const porcentaje = Number(redemptionPercentage || 0)
     const limiteMensual = Number(monthlyLimit || 0)
-    const limitePorItem = Number(monthlyItemLimitPerReward || 0)
     const vigencia = Number(expirationMonths || 0)
 
     return {
       porcentaje,
       limiteMensual,
-      limitePorItem,
       vigencia,
     }
-  }, [redemptionPercentage, monthlyLimit, monthlyItemLimitPerReward, expirationMonths])
+  }, [redemptionPercentage, monthlyLimit, expirationMonths])
 
   if (!autorizado) {
     return (
@@ -154,7 +148,7 @@ export default function AdminConfiguracionPage() {
               <span className="pysta-badge">Parámetros del sistema</span>
               <h1 className="pysta-section-title">Configuración general</h1>
               <p className="pysta-subtitle">
-                Ajusta las reglas del programa de puntos, los límites de redención y el comportamiento general de la plataforma.
+                Ajusta las reglas generales del programa de puntos, el límite mensual total y el comportamiento general de la plataforma.
               </p>
             </div>
 
@@ -179,17 +173,17 @@ export default function AdminConfiguracionPage() {
             <ResumenCard
               titulo="Límite mensual"
               valor={String(resumen.limiteMensual)}
-              descripcion="Ítems por cliente"
-            />
-            <ResumenCard
-              titulo="Límite por ítem"
-              valor={String(resumen.limitePorItem)}
-              descripcion="Máximo por premio"
+              descripcion="Ítems totales por cliente"
             />
             <ResumenCard
               titulo="Vigencia puntos"
               valor={expirationEnabled ? `${resumen.vigencia} mes(es)` : "Inactiva"}
               descripcion="Caducidad configurada"
+            />
+            <ResumenCard
+              titulo="Límite por premio"
+              valor="Se define en premios"
+              descripcion="Configuración individual"
             />
           </section>
         )}
@@ -202,7 +196,7 @@ export default function AdminConfiguracionPage() {
               <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
                 <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Reglas del programa</h2>
                 <p style={{ margin: 0, color: "#6b7280" }}>
-                  Ajusta conversión, límites, vigencia de puntos e instrucciones mostradas al cliente.
+                  Ajusta conversión, límite mensual total, vigencia de puntos e instrucciones mostradas al cliente.
                 </p>
               </div>
 
@@ -237,7 +231,7 @@ export default function AdminConfiguracionPage() {
                     </div>
 
                     <div>
-                      <label style={labelStyle}>Límite mensual de ítems redimibles</label>
+                      <label style={labelStyle}>Límite mensual total de ítems</label>
                       <input
                         className="pysta-input"
                         type="number"
@@ -245,20 +239,7 @@ export default function AdminConfiguracionPage() {
                         onChange={(e) => setMonthlyLimit(e.target.value)}
                       />
                       <p style={helperText}>
-                        Cantidad máxima total de ítems que un cliente puede redimir en el mes.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label style={labelStyle}>Máximo por ítem al mes</label>
-                      <input
-                        className="pysta-input"
-                        type="number"
-                        value={monthlyItemLimitPerReward}
-                        onChange={(e) => setMonthlyItemLimitPerReward(e.target.value)}
-                      />
-                      <p style={helperText}>
-                        Si pones 0, no habrá límite por premio. Si pones 2, el cliente solo podrá redimir 2 del mismo ítem.
+                        Cantidad máxima total de premios que un cliente puede redimir en el mes, sumando todos los ítems.
                       </p>
                     </div>
 
@@ -317,6 +298,23 @@ export default function AdminConfiguracionPage() {
                     </p>
                   </div>
 
+                  <div
+                    style={{
+                      background: "#fff8e7",
+                      border: "1px solid #f3d37a",
+                      borderRadius: "18px",
+                      padding: "18px",
+                      marginBottom: "18px",
+                    }}
+                  >
+                    <h3 style={{ margin: "0 0 8px 0", fontSize: "18px", color: "#111" }}>
+                      Cómo funciona ahora
+                    </h3>
+                    <p style={{ margin: 0, color: "#444", lineHeight: 1.6, fontSize: "14px" }}>
+                      El límite mensual total se configura aquí. El máximo que un cliente puede redimir de cada premio específico se configura directamente en la sección de premios.
+                    </p>
+                  </div>
+
                   <div style={{ marginBottom: "18px" }}>
                     <label style={labelStyle}>Instrucciones de la pantalla inicial</label>
                     <textarea
@@ -370,12 +368,12 @@ export default function AdminConfiguracionPage() {
                     value={`${resumen.porcentaje}%`}
                   />
                   <InfoItem
-                    label="Límite mensual"
+                    label="Límite mensual total"
                     value={`${resumen.limiteMensual} ítems`}
                   />
                   <InfoItem
                     label="Límite por premio"
-                    value={resumen.limitePorItem === 0 ? "Sin límite" : `${resumen.limitePorItem} unidades`}
+                    value="Se configura en cada premio"
                   />
                   <InfoItem
                     label="Expiración"

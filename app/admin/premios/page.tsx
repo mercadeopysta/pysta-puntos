@@ -17,6 +17,7 @@ type Premio = {
   is_active: boolean
   client_type: string
   image_url: string | null
+  max_monthly_per_user: number
 }
 
 export default function AdminPremiosPage() {
@@ -30,6 +31,7 @@ export default function AdminPremiosPage() {
   const [clientType, setClientType] = useState("")
   const [itemValue, setItemValue] = useState("")
   const [stock, setStock] = useState("")
+  const [maxMonthlyPerUser, setMaxMonthlyPerUser] = useState("")
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [currentImageUrl, setCurrentImageUrl] = useState("")
   const [mensaje, setMensaje] = useState("")
@@ -57,7 +59,7 @@ export default function AdminPremiosPage() {
 
     const { data, error } = await supabase
       .from("rewards")
-      .select("id, name, item_value, points_required, stock, is_active, client_type, image_url")
+      .select("id, name, item_value, points_required, stock, is_active, client_type, image_url, max_monthly_per_user")
       .order("created_at", { ascending: true })
 
     if (error) {
@@ -83,6 +85,7 @@ export default function AdminPremiosPage() {
     setClientType("")
     setItemValue("")
     setStock("")
+    setMaxMonthlyPerUser("")
     setImageFile(null)
     setCurrentImageUrl("")
   }
@@ -125,8 +128,9 @@ export default function AdminPremiosPage() {
 
     const valor = Number(itemValue)
     const stockNumero = Number(stock)
+    const maxMensualNumero = Number(maxMonthlyPerUser || 0)
 
-    if (valor <= 0 || stockNumero < 0) {
+    if (valor <= 0 || stockNumero < 0 || maxMensualNumero < 0) {
       setTipoMensaje("warning")
       setMensaje("Ingresa valores válidos.")
       return
@@ -145,6 +149,7 @@ export default function AdminPremiosPage() {
           item_value: number
           points_required: number
           stock: number
+          max_monthly_per_user: number
           image_url?: string | null
         } = {
           name,
@@ -152,6 +157,7 @@ export default function AdminPremiosPage() {
           item_value: valor,
           points_required: pointsRequired,
           stock: stockNumero,
+          max_monthly_per_user: maxMensualNumero,
         }
 
         if (imageUrl) {
@@ -180,6 +186,7 @@ export default function AdminPremiosPage() {
             item_value: valor,
             points_required: pointsRequired,
             stock: stockNumero,
+            max_monthly_per_user: maxMensualNumero,
             is_active: true,
             image_url: imageUrl,
           },
@@ -213,6 +220,7 @@ export default function AdminPremiosPage() {
     setClientType(premio.client_type || "")
     setItemValue(String(premio.item_value || ""))
     setStock(String(premio.stock))
+    setMaxMonthlyPerUser(String(premio.max_monthly_per_user ?? 0))
     setImageFile(null)
     setCurrentImageUrl(premio.image_url || "")
     setMensaje("")
@@ -313,11 +321,13 @@ export default function AdminPremiosPage() {
   const totalStock = premios.reduce((acc, p) => acc + Number(p.stock || 0), 0)
   const totalMayorista = premios.filter((p) => (p.client_type || "").toLowerCase() === "mayorista").length
   const totalDistribuidor = premios.filter((p) => (p.client_type || "").toLowerCase() === "distribuidor").length
+  const totalAmbos = premios.filter((p) => (p.client_type || "").toLowerCase() === "ambos").length
 
   const puntosCalculados = itemValue && Number(itemValue) > 0 ? Math.ceil(Number(itemValue) / 100) : 0
-  const compraMinimaEstimada = itemValue && Number(itemValue) > 0
-    ? Math.ceil(Number(itemValue) / 0.06)
-    : 0
+  const compraMinimaEstimada =
+    itemValue && Number(itemValue) > 0
+      ? Math.ceil(Number(itemValue) / 0.06)
+      : 0
 
   const premioMasCaro = useMemo(() => {
     if (!premios.length) return null
@@ -375,6 +385,7 @@ export default function AdminPremiosPage() {
             <ResumenCard titulo="Stock total" valor={String(totalStock)} descripcion="Unidades disponibles" />
             <ResumenCard titulo="Mayorista" valor={String(totalMayorista)} descripcion="Premios para este perfil" />
             <ResumenCard titulo="Distribuidor" valor={String(totalDistribuidor)} descripcion="Premios para este perfil" />
+            <ResumenCard titulo="Ambos" valor={String(totalAmbos)} descripcion="Visibles para ambos perfiles" />
           </section>
 
           <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
@@ -421,6 +432,7 @@ export default function AdminPremiosPage() {
                       <option value="">Selecciona tipo de cliente</option>
                       <option value="Mayorista">Mayorista</option>
                       <option value="Distribuidor">Distribuidor</option>
+                      <option value="Ambos">Ambos</option>
                     </select>
                   </Field>
 
@@ -441,6 +453,16 @@ export default function AdminPremiosPage() {
                       placeholder="Stock disponible"
                       value={stock}
                       onChange={(e) => setStock(e.target.value)}
+                    />
+                  </Field>
+
+                  <Field label="Máximo por usuario al mes">
+                    <input
+                      className="pysta-input"
+                      type="number"
+                      placeholder="Ej: 2"
+                      value={maxMonthlyPerUser}
+                      onChange={(e) => setMaxMonthlyPerUser(e.target.value)}
                     />
                   </Field>
                 </div>
@@ -542,7 +564,10 @@ export default function AdminPremiosPage() {
                 </div>
 
                 <InfoItem label="Puntos requeridos calculados" value={String(puntosCalculados)} />
-                <InfoItem label="Compra mínima estimada" value={compraMinimaEstimada ? `$${compraMinimaEstimada.toLocaleString("es-CO")}` : "-"} />
+                <InfoItem
+                  label="Compra mínima estimada"
+                  value={compraMinimaEstimada ? `$${compraMinimaEstimada.toLocaleString("es-CO")}` : "-"}
+                />
                 <InfoItem label="Premio más costoso actual" value={premioMasCaro ? premioMasCaro.name : "-"} />
               </div>
             </div>
@@ -703,6 +728,10 @@ export default function AdminPremiosPage() {
                             <InfoItem
                               label="Stock disponible"
                               value={String(premio.stock)}
+                            />
+                            <InfoItem
+                              label="Máximo por usuario al mes"
+                              value={String(premio.max_monthly_per_user ?? 0)}
                             />
                           </div>
                         </div>

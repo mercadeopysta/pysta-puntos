@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../../../lib/supabase"
 import LogoutButton from "../../../components/LogoutButton"
+import InfoPopup from "../../../components/InfoPopup"
 
 type FacturaSaldo = {
   amount_without_vat: number
@@ -14,6 +15,7 @@ type Redencion = {
   created_at: string
   redemption_group_id?: string | null
   reward_id?: string | null
+  status?: string
 }
 
 type Premio = {
@@ -25,6 +27,7 @@ type Premio = {
   is_active: boolean
   client_type: string
   image_url: string | null
+  max_monthly_per_user: number
 }
 
 type ExistingRequestGroup = {
@@ -35,11 +38,10 @@ type ExistingRequestGroup = {
 export default function PremiosPage() {
   const [puntosDisponibles, setPuntosDisponibles] = useState(0)
   const [premios, setPremios] = useState<Premio[]>([])
-  const [cantidades, setCantidades] = useState<Record<string, number>>({})
+  const [cantidades, setCantidades] = useState<Record<string, string>>({})
   const [cargando, setCargando] = useState(true)
   const [mensaje, setMensaje] = useState("")
   const [limiteMensual, setLimiteMensual] = useState(5)
-  const [limitePorItemMes, setLimitePorItemMes] = useState(0)
   const [itemsRedimidosMes, setItemsRedimidosMes] = useState(0)
   const [itemsPorPremioMes, setItemsPorPremioMes] = useState<Record<string, number>>({})
   const [procesandoPremioId, setProcesandoPremioId] = useState("")
@@ -48,31 +50,31 @@ export default function PremiosPage() {
 
   const cargarDatos = async () => {
     setCargando(true)
+    setMensaje("")
 
     const emailGuardado = localStorage.getItem("cliente_email")
     const tipoCliente = localStorage.getItem("cliente_tipo")
 
     if (!emailGuardado) {
       setCargando(false)
+      setMensaje("No se encontró el usuario logueado.")
       return
     }
 
     const { data: settingsData } = await supabase
       .from("settings")
       .select(
-        "redemption_percentage, monthly_redemption_limit, monthly_item_limit_per_reward, points_expiration_enabled, points_expiration_months"
+        "redemption_percentage, monthly_redemption_limit, points_expiration_enabled, points_expiration_months"
       )
       .limit(1)
       .single()
 
     const porcentaje = Number(settingsData?.redemption_percentage || 6)
     const limite = Number(settingsData?.monthly_redemption_limit || 5)
-    const limitePorItem = Number(settingsData?.monthly_item_limit_per_reward || 0)
     const vencimientoActivo = Boolean(settingsData?.points_expiration_enabled)
     const mesesVigencia = Number(settingsData?.points_expiration_months || 1)
 
     setLimiteMensual(limite)
-    setLimitePorItemMes(limitePorItem)
 
     const { data: facturasData } = await supabase
       .from("invoices")
@@ -105,7 +107,7 @@ export default function PremiosPage() {
 
     const { data: redencionesData } = await supabase
       .from("redemptions")
-      .select("points_used, created_at, redemption_group_id, reward_id")
+      .select("points_used, created_at, redemption_group_id, reward_id, status")
       .eq("user_email", emailGuardado)
       .neq("status", "cancelled")
 
@@ -124,13 +126,15 @@ export default function PremiosPage() {
 
       ;(redencionesData as Redencion[]).forEach((redencion) => {
         const fecha = new Date(redencion.created_at)
-        const mismoMes = fecha.getMonth() === mesActual && fecha.getFullYear() === anioActual
+        const mismoMes =
+          fecha.getMonth() === mesActual && fecha.getFullYear() === anioActual
 
         if (mismoMes) {
           itemsMesActual += 1
 
           if (redencion.reward_id) {
-            conteoPorPremio[redencion.reward_id] = (conteoPorPremio[redencion.reward_id] || 0) + 1
+            conteoPorPremio[redencion.reward_id] =
+              (conteoPorPremio[redencion.reward_id] || 0) + 1
           }
         }
       })
@@ -140,27 +144,31 @@ export default function PremiosPage() {
     setItemsPorPremioMes(conteoPorPremio)
     setPuntosDisponibles(Math.max(acumulados - redimidos, 0))
 
-    let query = supabase
+    const tiposPermitidos = tipoCliente ? [tipoCliente, "Ambos"] : ["Ambos"]
+
+    const { data: premiosData } = await supabase
       .from("rewards")
-      .select("id, name, item_value, points_required, stock, is_active, client_type, image_url")
+      .select(
+        "id, name, item_value, points_required, stock, is_active, client_type, image_url, max_monthly_per_user"
+      )
       .eq("is_active", true)
+      .in("client_type", tiposPermitidos)
       .order("created_at", { ascending: true })
-
-    if (tipoCliente) {
-      query = query.eq("client_type", tipoCliente)
-    }
-
-    const { data: premiosData } = await query
 
     if (premiosData) {
       const premiosRows = premiosData as Premio[]
       setPremios(premiosRows)
 
-      const cantidadesIniciales: Record<string, number> = {}
+      const cantidadesIniciales: Record<string, string> = {}
       premiosRows.forEach((premio) => {
-        cantidadesIniciales[premio.id] = 1
+        cantidadesIniciales[premio.id] =
+          premio.stock > 0 ? cantidades[premio.id] ?? "1" : "0"
       })
-      setCantidades((prev) => ({ ...cantidadesIniciales, ...prev }))
+
+      setCantidades(cantidadesIniciales)
+    } else {
+      setPremios([])
+      setCantidades({})
     }
 
     setCargando(false)
@@ -198,9 +206,50 @@ export default function PremiosPage() {
   }
 
   const cambiarCantidad = (premioId: string, valor: string, stock: number) => {
-    let cantidad = Number(valor)
+    const limpio = valor.replace(/\D/g, "")
 
-    if (!Number.isFinite(cantidad) || cantidad < 1) {
+    if (limpio === "") {
+      setCantidades((prev) => ({
+        ...prev,
+        [premioId]: "",
+      }))
+      return
+    }
+
+    let cantidad = Number(limpio)
+
+    if (cantidad > stock) {
+      cantidad = stock
+    }
+
+    setCantidades((prev) => ({
+      ...prev,
+      [premioId]: String(cantidad),
+    }))
+  }
+
+  const normalizarCantidad = (premioId: string, stock: number) => {
+    const actual = cantidades[premioId]
+
+    if (stock <= 0) {
+      setCantidades((prev) => ({
+        ...prev,
+        [premioId]: "0",
+      }))
+      return
+    }
+
+    if (actual === "" || actual === undefined) {
+      setCantidades((prev) => ({
+        ...prev,
+        [premioId]: "1",
+      }))
+      return
+    }
+
+    let cantidad = Number(actual)
+
+    if (Number.isNaN(cantidad) || cantidad < 1) {
       cantidad = 1
     }
 
@@ -210,7 +259,7 @@ export default function PremiosPage() {
 
     setCantidades((prev) => ({
       ...prev,
-      [premioId]: cantidad,
+      [premioId]: String(cantidad),
     }))
   }
 
@@ -218,7 +267,8 @@ export default function PremiosPage() {
     setMensaje("")
 
     const emailGuardado = localStorage.getItem("cliente_email")
-    const cantidad = Number(cantidades[premio.id] || 1)
+    const cantidadTexto = cantidades[premio.id]
+    const cantidad = Number(cantidadTexto === "" ? 0 : cantidadTexto || "1")
     const puntosNecesarios = premio.points_required * cantidad
     const yaRedimidosDeEsePremio = Number(itemsPorPremioMes[premio.id] || 0)
 
@@ -227,18 +277,18 @@ export default function PremiosPage() {
       return
     }
 
-    if (cantidad < 1) {
-      setMensaje("La cantidad debe ser mínimo 1.")
+    if (premio.stock <= 0) {
+      setMensaje("Este premio ya está agotado.")
+      return
+    }
+
+    if (!cantidadTexto || cantidad < 1) {
+      setMensaje("Debes ingresar una cantidad válida.")
       return
     }
 
     if (cantidad > premio.stock) {
       setMensaje(`Solo hay ${premio.stock} unidades disponibles de este premio.`)
-      return
-    }
-
-    if (premio.stock <= 0) {
-      setMensaje("Este premio ya está agotado.")
       return
     }
 
@@ -254,9 +304,11 @@ export default function PremiosPage() {
       return
     }
 
-    if (limitePorItemMes > 0 && yaRedimidosDeEsePremio + cantidad > limitePorItemMes) {
+    const limitePremio = Number(premio.max_monthly_per_user || 0)
+
+    if (limitePremio > 0 && yaRedimidosDeEsePremio + cantidad > limitePremio) {
       setMensaje(
-        `Solo puedes redimir máximo ${limitePorItemMes} unidades de este premio por mes. Ya llevas ${yaRedimidosDeEsePremio}.`
+        `Solo puedes redimir máximo ${limitePremio} unidades de este premio por mes. Ya llevas ${yaRedimidosDeEsePremio}.`
       )
       return
     }
@@ -264,7 +316,8 @@ export default function PremiosPage() {
     setProcesandoPremioId(premio.id)
 
     const grupoActivo = await obtenerGrupoActivoDelDia(emailGuardado)
-    const redemptionGroupId = grupoActivo?.redemption_group_id || generarGrupoRedencion()
+    const redemptionGroupId =
+      grupoActivo?.redemption_group_id || generarGrupoRedencion()
 
     const filas = Array.from({ length: cantidad }, () => ({
       user_email: emailGuardado,
@@ -302,221 +355,265 @@ export default function PremiosPage() {
 
     setCantidades((prev) => ({
       ...prev,
-      [premio.id]: 1,
+      [premio.id]: premio.stock - cantidad > 0 ? "1" : "0",
     }))
 
     setProcesandoPremioId("")
+    await cargarDatos()
+  }
+
+  const refrescarPantalla = () => {
     cargarDatos()
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "#f5f5f5",
-        padding: "40px",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "16px",
-            flexWrap: "wrap",
-            marginBottom: "10px",
-          }}
-        > 
+    <>
+      <InfoPopup
+        storageKey="popup-premios"
+        title="Redención de premios"
+        message="Recuerda que los premios redimidos serán enviados con el siguiente pedido que realices. También puedes revisar el estado de tus solicitudes en Mis redenciones."
+      />
 
-          <h1 style={{ fontSize: "32px", color: "#111", margin: 0 }}>
-            Premios disponibles
-          </h1>
-                  <div style={{ marginTop: "24px" }}>
-  <a
-    href="/dashboard"
-    className="pysta-btn pysta-btn-light"
-  >
-    Volver al panel
-  </a>
-</div>
-          <LogoutButton />
-        </div>
-
-        <p style={{ color: "#555", marginBottom: "10px" }}>
-          Aquí puedes ver los premios disponibles para redimir con tus puntos.
-        </p>
-
-        <p style={{ color: "#111", fontWeight: "bold", marginBottom: "8px" }}>
-          Tus puntos disponibles: {puntosDisponibles}
-        </p>
-
-        <p style={{ color: "#555", marginBottom: "6px" }}>
-          Ítems redimidos este mes: {itemsRedimidosMes} / {limiteMensual}
-        </p>
-
-        <p style={{ color: "#111", fontWeight: "bold", marginBottom: "20px" }}>
-          Ítems disponibles para este mes: {itemsDisponiblesMes}
-        </p>
-
-        {mensaje && (
+      <main
+        style={{
+          minHeight: "100vh",
+          backgroundColor: "#f5f5f5",
+          padding: "20px 14px",
+          fontFamily: "Arial, sans-serif",
+        }}
+      >
+        <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
           <div
             style={{
-              backgroundColor: "white",
-              padding: "16px",
-              borderRadius: "12px",
-              marginBottom: "20px",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-              color: "#111",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "16px",
+              flexWrap: "wrap",
+              marginBottom: "10px",
             }}
           >
-            {mensaje}
-          </div>
-        )}
+            <h1 style={{ fontSize: "32px", color: "#111", margin: 0 }}>
+              Premios disponibles
+            </h1>
 
-        {cargando ? (
-          <div style={cardStyle}>
-            <p style={{ color: "#333" }}>Cargando premios...</p>
-          </div>
-        ) : premios.length === 0 ? (
-          <div style={cardStyle}>
-            <p style={{ color: "#333" }}>No hay premios disponibles para tu tipo de cliente.</p>
-          </div>
-        ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-              gap: "20px",
-            }}
-          >
-            {premios.map((premio) => {
-              const cantidad = Number(cantidades[premio.id] || 1)
-              const puntosNecesarios = premio.points_required * cantidad
-              const disponible = premio.stock > 0
-              const puedeRedimir = puntosDisponibles >= puntosNecesarios
-              const excedeLimite = itemsRedimidosMes + cantidad > limiteMensual
-              const redimidosDeEsePremio = Number(itemsPorPremioMes[premio.id] || 0)
-              const excedeLimitePorItem =
-                limitePorItemMes > 0 && redimidosDeEsePremio + cantidad > limitePorItemMes
-              const procesando = procesandoPremioId === premio.id
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <a href="/dashboard" className="pysta-btn pysta-btn-light">
+                Volver al panel
+              </a>
 
-              return (
-                <div key={premio.id} style={cardStyle}>
-                  <div style={imageWrapStyle}>
-                    {premio.image_url ? (
-                      <img
-                        src={premio.image_url}
-                        alt={premio.name}
-                        style={imageStyle}
+              <button
+                onClick={refrescarPantalla}
+                className="pysta-btn pysta-btn-light"
+                style={{ border: "none", cursor: "pointer" }}
+              >
+                Refrescar
+              </button>
+
+              <LogoutButton />
+            </div>
+          </div>
+
+          <p style={{ color: "#555", marginBottom: "10px" }}>
+            Aquí puedes ver los premios disponibles para redimir con tus puntos.
+          </p>
+
+          <p style={{ color: "#111", fontWeight: "bold", marginBottom: "8px" }}>
+            Tus puntos disponibles: {puntosDisponibles}
+          </p>
+
+          <p style={{ color: "#555", marginBottom: "6px" }}>
+            Ítems redimidos este mes: {itemsRedimidosMes} / {limiteMensual}
+          </p>
+
+          <p style={{ color: "#111", fontWeight: "bold", marginBottom: "20px" }}>
+            Ítems disponibles para este mes: {itemsDisponiblesMes}
+          </p>
+
+          {mensaje && (
+            <div
+              style={{
+                backgroundColor: "white",
+                padding: "16px",
+                borderRadius: "12px",
+                marginBottom: "20px",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+                color: "#111",
+              }}
+            >
+              {mensaje}
+            </div>
+          )}
+
+          {cargando ? (
+            <div style={cardStyle}>
+              <p style={{ color: "#333" }}>Cargando premios...</p>
+            </div>
+          ) : premios.length === 0 ? (
+            <div style={cardStyle}>
+              <p style={{ color: "#333" }}>
+                No hay premios disponibles para tu tipo de cliente.
+              </p>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gap: "20px",
+              }}
+            >
+              {premios.map((premio) => {
+                const cantidadTexto = cantidades[premio.id] ?? (premio.stock > 0 ? "1" : "0")
+                const cantidad = Number(cantidadTexto === "" ? 0 : cantidadTexto)
+                const puntosNecesarios = premio.points_required * cantidad
+                const disponible = premio.stock > 0
+                const puedeRedimir =
+                  cantidad >= 1 && puntosDisponibles >= puntosNecesarios
+                const excedeLimite = cantidad >= 1 && itemsRedimidosMes + cantidad > limiteMensual
+                const redimidosDeEsePremio = Number(itemsPorPremioMes[premio.id] || 0)
+                const limitePremio = Number(premio.max_monthly_per_user || 0)
+                const excedeLimitePorItem =
+                  cantidad >= 1 &&
+                  limitePremio > 0 &&
+                  redimidosDeEsePremio + cantidad > limitePremio
+                const procesando = procesandoPremioId === premio.id
+
+                return (
+                  <div key={premio.id} style={cardStyle}>
+                    <div style={imageWrapStyle}>
+                      {premio.image_url ? (
+                        <img src={premio.image_url} alt={premio.name} style={imageStyle} />
+                      ) : (
+                        <div style={imagePlaceholderStyle}>Sin imagen</div>
+                      )}
+                    </div>
+
+                    <h2 style={nameStyle}>{premio.name}</h2>
+
+                    <p style={textStyle}>Puntos por unidad: {premio.points_required}</p>
+                    <p style={textStyle}>Stock disponible: {premio.stock}</p>
+                    <p style={textStyle}>Aplica para: {premio.client_type}</p>
+
+                    {limitePremio > 0 && (
+                      <p style={textStyle}>
+                        Máximo por este premio al mes: {redimidosDeEsePremio} / {limitePremio}
+                      </p>
+                    )}
+
+                    <div style={{ marginTop: "12px", marginBottom: "12px" }}>
+                      <label style={labelStyle}>Cantidad</label>
+                      <input
+                        className="campo-cantidad"
+                        type="text"
+                        inputMode="numeric"
+                        value={cantidadTexto}
+                        onChange={(e) =>
+                          cambiarCantidad(premio.id, e.target.value, premio.stock)
+                        }
+                        onBlur={() => normalizarCantidad(premio.id, premio.stock)}
+                        disabled={!disponible}
+                        placeholder={disponible ? "1" : "0"}
                       />
+                    </div>
+
+                    <p style={{ ...textStyle, fontWeight: "bold" }}>
+                      Puntos necesarios: {puntosNecesarios}
+                    </p>
+
+                    {!disponible && (
+                      <p style={{ ...textStyle, color: "#999", fontWeight: "bold" }}>
+                        Estado: Agotado
+                      </p>
+                    )}
+
+                    {disponible && cantidadTexto === "" && (
+                      <p style={{ ...textStyle, color: "#b45309", fontWeight: "bold" }}>
+                        Ingresa una cantidad para continuar
+                      </p>
+                    )}
+
+                    {disponible && cantidadTexto !== "" && excedeLimite && (
+                      <p style={{ ...textStyle, color: "#b91c1c", fontWeight: "bold" }}>
+                        Supera tu límite mensual de ítems
+                      </p>
+                    )}
+
+                    {disponible &&
+                      cantidadTexto !== "" &&
+                      !excedeLimite &&
+                      excedeLimitePorItem && (
+                        <p style={{ ...textStyle, color: "#b91c1c", fontWeight: "bold" }}>
+                          Supera el máximo mensual permitido para este premio
+                        </p>
+                      )}
+
+                    {disponible &&
+                      cantidadTexto !== "" &&
+                      !excedeLimite &&
+                      !excedeLimitePorItem &&
+                      puedeRedimir && (
+                        <p style={{ ...textStyle, color: "#006400", fontWeight: "bold" }}>
+                          Puedes redimir esta cantidad
+                        </p>
+                      )}
+
+                    {disponible &&
+                      cantidadTexto !== "" &&
+                      !excedeLimite &&
+                      !excedeLimitePorItem &&
+                      !puedeRedimir && (
+                        <p style={{ ...textStyle, color: "#b45309", fontWeight: "bold" }}>
+                          Te faltan {Math.max(puntosNecesarios - puntosDisponibles, 0)} puntos
+                        </p>
+                      )}
+
+                    {!disponible ? (
+                      <button style={buttonDisabled}>Agotado</button>
+                    ) : cantidadTexto === "" ? (
+                      <button style={buttonDisabled}>Ingresa cantidad</button>
+                    ) : excedeLimite ? (
+                      <button style={buttonDisabled}>Supera límite mensual</button>
+                    ) : excedeLimitePorItem ? (
+                      <button style={buttonDisabled}>Supera límite por ítem</button>
+                    ) : !puedeRedimir ? (
+                      <button style={buttonDisabled}>Sin puntos suficientes</button>
                     ) : (
-                      <div style={imagePlaceholderStyle}>Sin imagen</div>
+                      <button
+                        onClick={() => handleRedimir(premio)}
+                        style={buttonGold}
+                        disabled={procesando}
+                      >
+                        {procesando ? "Procesando..." : "Redimir"}
+                      </button>
                     )}
                   </div>
+                )
+              })}
+            </div>
+          )}
 
-                  <h2 style={nameStyle}>{premio.name}</h2>
-
-                  <p style={textStyle}>Puntos por unidad: {premio.points_required}</p>
-                  <p style={textStyle}>Stock disponible: {premio.stock}</p>
-
-                  {limitePorItemMes > 0 && (
-                    <p style={textStyle}>
-                      Máximo por este premio al mes: {redimidosDeEsePremio} / {limitePorItemMes}
-                    </p>
-                  )}
-
-                  <div style={{ marginTop: "12px", marginBottom: "12px" }}>
-                    <label style={labelStyle}>Cantidad</label>
-                    <input
-                      className="campo-cantidad"
-                      type="number"
-                      min={1}
-                      max={premio.stock}
-                      value={cantidad}
-                      onChange={(e) => cambiarCantidad(premio.id, e.target.value, premio.stock)}
-                      disabled={!disponible}
-                    />
-                  </div>
-
-                  <p style={{ ...textStyle, fontWeight: "bold" }}>
-                    Puntos necesarios: {puntosNecesarios}
-                  </p>
-
-                  {!disponible && (
-                    <p style={{ ...textStyle, color: "#999", fontWeight: "bold" }}>
-                      Estado: Agotado
-                    </p>
-                  )}
-
-                  {disponible && excedeLimite && (
-                    <p style={{ ...textStyle, color: "#b91c1c", fontWeight: "bold" }}>
-                      Supera tu límite mensual de ítems
-                    </p>
-                  )}
-
-                  {disponible && !excedeLimite && excedeLimitePorItem && (
-                    <p style={{ ...textStyle, color: "#b91c1c", fontWeight: "bold" }}>
-                      Supera el máximo mensual permitido para este premio
-                    </p>
-                  )}
-
-                  {disponible && !excedeLimite && !excedeLimitePorItem && puedeRedimir && (
-                    <p style={{ ...textStyle, color: "#006400", fontWeight: "bold" }}>
-                      Puedes redimir esta cantidad
-                    </p>
-                  )}
-
-                  {disponible && !excedeLimite && !excedeLimitePorItem && !puedeRedimir && (
-                    <p style={{ ...textStyle, color: "#b45309", fontWeight: "bold" }}>
-                      Te faltan {Math.max(puntosNecesarios - puntosDisponibles, 0)} puntos
-                    </p>
-                  )}
-
-                  {!disponible ? (
-                    <button style={buttonDisabled}>Agotado</button>
-                  ) : excedeLimite ? (
-                    <button style={buttonDisabled}>Supera límite mensual</button>
-                  ) : excedeLimitePorItem ? (
-                    <button style={buttonDisabled}>Supera límite por ítem</button>
-                  ) : !puedeRedimir ? (
-                    <button style={buttonDisabled}>Sin puntos suficientes</button>
-                  ) : (
-                    <button
-                      onClick={() => handleRedimir(premio)}
-                      style={buttonGold}
-                      disabled={procesando}
-                    >
-                      {procesando ? "Procesando..." : "Redimir"}
-                    </button>
-                  )}
-                </div>
-              )
-            })}
+          <div style={{ marginTop: "30px" }}>
+            <a href="/dashboard" style={buttonBack}>
+              Volver al panel
+            </a>
           </div>
-        )}
-
-        <div style={{ marginTop: "30px" }}>
-          <a href="/dashboard" style={buttonBack}>
-            Volver al panel
-          </a>
         </div>
-      </div>
 
-      <style>{`
-        .campo-cantidad {
-          width: 100%;
-          padding: 12px;
-          border-radius: 10px;
-          border: 1px solid #ccc;
-          font-size: 16px;
-          color: #111;
-          background: #fff;
-          box-sizing: border-box;
-        }
-      `}</style>
-    </main>
+        <style>{`
+          .campo-cantidad {
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid #ccc;
+            font-size: 16px;
+            color: #111;
+            background: #fff;
+            box-sizing: border-box;
+          }
+        `}</style>
+      </main>
+    </>
   )
 }
 
