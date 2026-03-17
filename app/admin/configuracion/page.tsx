@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
 import AdminMenu from "../../../components/AdminMenu"
@@ -112,6 +112,20 @@ export default function AdminConfiguracionPage() {
     setMensaje("Configuración actualizada correctamente.")
   }
 
+  const resumen = useMemo(() => {
+    const porcentaje = Number(redemptionPercentage || 0)
+    const limiteMensual = Number(monthlyLimit || 0)
+    const limitePorItem = Number(monthlyItemLimitPerReward || 0)
+    const vigencia = Number(expirationMonths || 0)
+
+    return {
+      porcentaje,
+      limiteMensual,
+      limitePorItem,
+      vigencia,
+    }
+  }, [redemptionPercentage, monthlyLimit, monthlyItemLimitPerReward, expirationMonths])
+
   if (!autorizado) {
     return (
       <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -124,22 +138,61 @@ export default function AdminConfiguracionPage() {
 
   return (
     <main className="pysta-page">
-      <div className="pysta-shell" style={{ maxWidth: "980px" }}>
+      <div className="pysta-shell" style={{ maxWidth: "1180px" }}>
         <AdminMenu />
 
-        <section className="pysta-card" style={{ padding: "28px", marginBottom: "22px" }}>
+        <section
+          className="pysta-card"
+          style={{
+            padding: "30px",
+            marginBottom: "22px",
+            background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
+          }}
+        >
           <div className="pysta-topbar">
-            <div style={{ display: "grid", gap: "8px" }}>
+            <div style={{ display: "grid", gap: "10px" }}>
               <span className="pysta-badge">Parámetros del sistema</span>
               <h1 className="pysta-section-title">Configuración general</h1>
               <p className="pysta-subtitle">
-                Define las reglas del programa de puntos, los límites de redención y el comportamiento general de la plataforma.
+                Ajusta las reglas del programa de puntos, los límites de redención y el comportamiento general de la plataforma.
               </p>
             </div>
 
             <AdminLogoutButton />
           </div>
         </section>
+
+        {!cargando && (
+          <section
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "16px",
+              marginBottom: "22px",
+            }}
+          >
+            <ResumenCard
+              titulo="Conversión"
+              valor={`${resumen.porcentaje}%`}
+              descripcion="Base para acumulación"
+            />
+            <ResumenCard
+              titulo="Límite mensual"
+              valor={String(resumen.limiteMensual)}
+              descripcion="Ítems por cliente"
+            />
+            <ResumenCard
+              titulo="Límite por ítem"
+              valor={String(resumen.limitePorItem)}
+              descripcion="Máximo por premio"
+            />
+            <ResumenCard
+              titulo="Vigencia puntos"
+              valor={expirationEnabled ? `${resumen.vigencia} mes(es)` : "Inactiva"}
+              descripcion="Caducidad configurada"
+            />
+          </section>
+        )}
 
         <section className="pysta-card" style={{ padding: "24px" }}>
           {cargando ? (
@@ -149,145 +202,240 @@ export default function AdminConfiguracionPage() {
               <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
                 <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Reglas del programa</h2>
                 <p style={{ margin: 0, color: "#6b7280" }}>
-                  Ajusta la conversión, límites de redención, vencimiento de puntos y el texto de bienvenida.
+                  Ajusta conversión, límites, vigencia de puntos e instrucciones mostradas al cliente.
                 </p>
               </div>
 
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                  gap: "16px",
-                  marginBottom: "18px",
+                  gridTemplateColumns: "minmax(0, 1.1fr) minmax(280px, 0.9fr)",
+                  gap: "22px",
                 }}
               >
                 <div>
-                  <label style={labelStyle}>Porcentaje de conversión</label>
-                  <input
-                    className="pysta-input"
-                    type="number"
-                    step="0.01"
-                    value={redemptionPercentage}
-                    onChange={(e) => setRedemptionPercentage(e.target.value)}
-                  />
-                  <p style={helperText}>
-                    Ejemplo: 6 significa que el cliente acumula puntos con base en un 6% del valor registrado.
-                  </p>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>Límite mensual de ítems redimibles</label>
-                  <input
-                    className="pysta-input"
-                    type="number"
-                    value={monthlyLimit}
-                    onChange={(e) => setMonthlyLimit(e.target.value)}
-                  />
-                  <p style={helperText}>
-                    Cantidad máxima total de ítems que un cliente puede redimir en el mes.
-                  </p>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>Máximo por ítem al mes</label>
-                  <input
-                    className="pysta-input"
-                    type="number"
-                    value={monthlyItemLimitPerReward}
-                    onChange={(e) => setMonthlyItemLimitPerReward(e.target.value)}
-                  />
-                  <p style={helperText}>
-                    Si pones 2, un cliente solo podrá redimir 2 unidades del mismo premio al mes. Si pones 0, no tendrá límite por premio.
-                  </p>
-                </div>
-
-                <div>
-                  <label style={labelStyle}>Meses de vigencia de puntos</label>
-                  <input
-                    className="pysta-input"
-                    type="number"
-                    value={expirationMonths}
-                    onChange={(e) => setExpirationMonths(e.target.value)}
-                  />
-                  <p style={helperText}>
-                    Tiempo durante el cual los puntos se mantienen vigentes cuando el vencimiento está activo.
-                  </p>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  background: "#f9fafb",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "16px",
-                  padding: "18px",
-                  marginBottom: "18px",
-                }}
-              >
-                <label style={labelStyle}>Activar vencimiento de puntos</label>
-
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                  <input
-                    type="checkbox"
-                    checked={expirationEnabled}
-                    onChange={(e) => setExpirationEnabled(e.target.checked)}
-                    style={{ width: "18px", height: "18px" }}
-                  />
-                  <span
+                  <div
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      padding: "6px 10px",
-                      borderRadius: "999px",
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      background: expirationEnabled ? "#ecfdf3" : "#f3f4f6",
-                      color: expirationEnabled ? "#166534" : "#6b7280",
-                      border: expirationEnabled ? "1px solid #bbf7d0" : "1px solid #e5e7eb",
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                      gap: "16px",
+                      marginBottom: "18px",
                     }}
                   >
-                    {expirationEnabled ? "Sí, activo" : "No, inactivo"}
-                  </span>
+                    <div>
+                      <label style={labelStyle}>Porcentaje de conversión</label>
+                      <input
+                        className="pysta-input"
+                        type="number"
+                        step="0.01"
+                        value={redemptionPercentage}
+                        onChange={(e) => setRedemptionPercentage(e.target.value)}
+                      />
+                      <p style={helperText}>
+                        Ejemplo: 6 significa que el cliente acumula puntos sobre el 6% del valor aprobado.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label style={labelStyle}>Límite mensual de ítems redimibles</label>
+                      <input
+                        className="pysta-input"
+                        type="number"
+                        value={monthlyLimit}
+                        onChange={(e) => setMonthlyLimit(e.target.value)}
+                      />
+                      <p style={helperText}>
+                        Cantidad máxima total de ítems que un cliente puede redimir en el mes.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label style={labelStyle}>Máximo por ítem al mes</label>
+                      <input
+                        className="pysta-input"
+                        type="number"
+                        value={monthlyItemLimitPerReward}
+                        onChange={(e) => setMonthlyItemLimitPerReward(e.target.value)}
+                      />
+                      <p style={helperText}>
+                        Si pones 0, no habrá límite por premio. Si pones 2, el cliente solo podrá redimir 2 del mismo ítem.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label style={labelStyle}>Meses de vigencia de puntos</label>
+                      <input
+                        className="pysta-input"
+                        type="number"
+                        value={expirationMonths}
+                        onChange={(e) => setExpirationMonths(e.target.value)}
+                      />
+                      <p style={helperText}>
+                        Tiempo durante el cual los puntos seguirán siendo válidos cuando la expiración esté activa.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: "#f9fafb",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "18px",
+                      padding: "18px",
+                      marginBottom: "18px",
+                    }}
+                  >
+                    <label style={labelStyle}>Activar vencimiento de puntos</label>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                      <input
+                        type="checkbox"
+                        checked={expirationEnabled}
+                        onChange={(e) => setExpirationEnabled(e.target.checked)}
+                        style={{ width: "18px", height: "18px" }}
+                      />
+
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "6px 10px",
+                          borderRadius: "999px",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          background: expirationEnabled ? "#ecfdf3" : "#f3f4f6",
+                          color: expirationEnabled ? "#166534" : "#6b7280",
+                          border: expirationEnabled ? "1px solid #bbf7d0" : "1px solid #e5e7eb",
+                        }}
+                      >
+                        {expirationEnabled ? "Sí, activo" : "No, inactivo"}
+                      </span>
+                    </div>
+
+                    <p style={{ ...helperText, marginTop: "10px" }}>
+                      Cuando está activo, los puntos expiran según la cantidad de meses configurada.
+                    </p>
+                  </div>
+
+                  <div style={{ marginBottom: "18px" }}>
+                    <label style={labelStyle}>Instrucciones de la pantalla inicial</label>
+                    <textarea
+                      className="pysta-textarea"
+                      rows={8}
+                      value={introInstructions}
+                      onChange={(e) => setIntroInstructions(e.target.value)}
+                      style={{ resize: "vertical" }}
+                    />
+                    <p style={helperText}>
+                      Este texto sirve como guía de bienvenida o instrucciones generales para el cliente.
+                    </p>
+                  </div>
+
+                  <div className="pysta-actions">
+                    <button
+                      onClick={guardarConfiguracion}
+                      className="pysta-btn pysta-btn-dark"
+                    >
+                      Guardar configuración
+                    </button>
+                  </div>
+
+                  {mensaje && (
+                    <div style={{ marginTop: "16px" }}>
+                      <AlertMessage text={mensaje} type={tipoMensaje} />
+                    </div>
+                  )}
                 </div>
 
-                <p style={{ ...helperText, marginTop: "10px" }}>
-                  Cuando está activo, los puntos expiran según la cantidad de meses configurada arriba.
-                </p>
-              </div>
-
-              <div style={{ marginBottom: "18px" }}>
-                <label style={labelStyle}>Instrucciones de la pantalla inicial</label>
-                <textarea
-                  className="pysta-textarea"
-                  rows={7}
-                  value={introInstructions}
-                  onChange={(e) => setIntroInstructions(e.target.value)}
-                  style={{ resize: "vertical" }}
-                />
-                <p style={helperText}>
-                  Este texto puede usarse para explicar el funcionamiento del programa en la pantalla principal o de bienvenida.
-                </p>
-              </div>
-
-              <div className="pysta-actions">
-                <button
-                  onClick={guardarConfiguracion}
-                  className="pysta-btn pysta-btn-dark"
+                <aside
+                  style={{
+                    background: "#f9fafb",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "20px",
+                    padding: "20px",
+                    display: "grid",
+                    gap: "16px",
+                    alignContent: "start",
+                  }}
                 >
-                  Guardar configuración
-                </button>
-              </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: "20px", color: "#111" }}>Vista rápida</h3>
+                    <p style={{ margin: "8px 0 0 0", color: "#6b7280", lineHeight: 1.5 }}>
+                      Resumen de la configuración activa del programa.
+                    </p>
+                  </div>
 
-              {mensaje && (
-                <div style={{ marginTop: "16px" }}>
-                  <AlertMessage text={mensaje} type={tipoMensaje} />
-                </div>
-              )}
+                  <InfoItem
+                    label="Conversión"
+                    value={`${resumen.porcentaje}%`}
+                  />
+                  <InfoItem
+                    label="Límite mensual"
+                    value={`${resumen.limiteMensual} ítems`}
+                  />
+                  <InfoItem
+                    label="Límite por premio"
+                    value={resumen.limitePorItem === 0 ? "Sin límite" : `${resumen.limitePorItem} unidades`}
+                  />
+                  <InfoItem
+                    label="Expiración"
+                    value={expirationEnabled ? `Activa (${resumen.vigencia} mes(es))` : "Inactiva"}
+                  />
+                  <InfoItem
+                    label="Longitud del mensaje inicial"
+                    value={`${introInstructions.length} caracteres`}
+                  />
+                </aside>
+              </div>
             </>
           )}
         </section>
       </div>
     </main>
+  )
+}
+
+function ResumenCard({
+  titulo,
+  valor,
+  descripcion,
+}: {
+  titulo: string
+  valor: string
+  descripcion: string
+}) {
+  return (
+    <div
+      className="pysta-card"
+      style={{
+        padding: "22px",
+        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
+      }}
+    >
+      <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
+      <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
+      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
+    </div>
+  )
+}
+
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid #e5e7eb",
+        borderRadius: "14px",
+        padding: "12px 14px",
+      }}
+    >
+      <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
+        {label}
+      </p>
+      <p style={{ margin: 0, fontSize: "15px", color: "#111", lineHeight: 1.5 }}>
+        {value}
+      </p>
+    </div>
   )
 }
 

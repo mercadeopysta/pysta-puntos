@@ -1,6 +1,6 @@
 "use client"
 
-import { ChangeEvent, useEffect, useState } from "react"
+import { ChangeEvent, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
 import AdminMenu from "../../../components/AdminMenu"
@@ -308,6 +308,22 @@ export default function AdminPremiosPage() {
     setPremioAEliminar(null)
   }
 
+  const totalActivos = premios.filter((p) => p.is_active).length
+  const totalInactivos = premios.filter((p) => !p.is_active).length
+  const totalStock = premios.reduce((acc, p) => acc + Number(p.stock || 0), 0)
+  const totalMayorista = premios.filter((p) => (p.client_type || "").toLowerCase() === "mayorista").length
+  const totalDistribuidor = premios.filter((p) => (p.client_type || "").toLowerCase() === "distribuidor").length
+
+  const puntosCalculados = itemValue && Number(itemValue) > 0 ? Math.ceil(Number(itemValue) / 100) : 0
+  const compraMinimaEstimada = itemValue && Number(itemValue) > 0
+    ? Math.ceil(Number(itemValue) / 0.06)
+    : 0
+
+  const premioMasCaro = useMemo(() => {
+    if (!premios.length) return null
+    return [...premios].sort((a, b) => Number(b.item_value || 0) - Number(a.item_value || 0))[0]
+  }, [premios])
+
   if (!autorizado) {
     return (
       <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -321,21 +337,44 @@ export default function AdminPremiosPage() {
   return (
     <>
       <main className="pysta-page">
-        <div className="pysta-shell" style={{ maxWidth: "1350px" }}>
+        <div className="pysta-shell" style={{ maxWidth: "1380px" }}>
           <AdminMenu />
 
-          <section className="pysta-card" style={{ padding: "28px", marginBottom: "22px" }}>
+          <section
+            className="pysta-card"
+            style={{
+              padding: "30px",
+              marginBottom: "22px",
+              background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
+            }}
+          >
             <div className="pysta-topbar">
-              <div style={{ display: "grid", gap: "8px" }}>
+              <div style={{ display: "grid", gap: "10px" }}>
                 <span className="pysta-badge">Gestión de catálogo</span>
                 <h1 className="pysta-section-title">Administrar premios</h1>
                 <p className="pysta-subtitle">
-                  Crea, edita, activa, desactiva o elimina premios disponibles para tus clientes.
+                  Crea, edita, activa, desactiva o elimina premios del programa de puntos.
                 </p>
               </div>
 
               <AdminLogoutButton />
             </div>
+          </section>
+
+          <section
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "16px",
+              marginBottom: "22px",
+            }}
+          >
+            <ResumenCard titulo="Premios totales" valor={String(premios.length)} descripcion="Catálogo completo" />
+            <ResumenCard titulo="Activos" valor={String(totalActivos)} descripcion="Visibles para clientes" />
+            <ResumenCard titulo="Inactivos" valor={String(totalInactivos)} descripcion="Ocultos temporalmente" />
+            <ResumenCard titulo="Stock total" valor={String(totalStock)} descripcion="Unidades disponibles" />
+            <ResumenCard titulo="Mayorista" valor={String(totalMayorista)} descripcion="Premios para este perfil" />
+            <ResumenCard titulo="Distribuidor" valor={String(totalDistribuidor)} descripcion="Premios para este perfil" />
           </section>
 
           <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
@@ -344,141 +383,175 @@ export default function AdminPremiosPage() {
                 {editingId ? "Editar premio" : "Crear nuevo premio"}
               </h2>
               <p style={{ margin: 0, color: "#6b7280" }}>
-                Completa la información del premio y sube una imagen si la tienes.
+                Completa la información del premio, sube su imagen y define el tipo de cliente al que aplica.
               </p>
             </div>
 
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                gap: "16px",
+                gridTemplateColumns: "minmax(0, 1.1fr) minmax(300px, 0.9fr)",
+                gap: "22px",
               }}
             >
-              <input
-                className="pysta-input"
-                type="text"
-                placeholder="Nombre del premio"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-
-              <select
-                className="pysta-select"
-                value={clientType}
-                onChange={(e) => setClientType(e.target.value)}
-              >
-                <option value="">Selecciona tipo de cliente</option>
-                <option value="Mayorista">Mayorista</option>
-                <option value="Distribuidor">Distribuidor</option>
-              </select>
-
-              <input
-                className="pysta-input"
-                type="number"
-                placeholder="Valor del premio"
-                value={itemValue}
-                onChange={(e) => setItemValue(e.target.value)}
-              />
-
-              <input
-                className="pysta-input"
-                type="number"
-                placeholder="Stock disponible"
-                value={stock}
-                onChange={(e) => setStock(e.target.value)}
-              />
-            </div>
-
-            <div style={{ marginTop: "16px" }}>
-              <label style={labelStyle}>Foto del premio</label>
-              <input
-                className="pysta-input"
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-              />
-            </div>
-
-            {currentImageUrl && (
-              <div
-                style={{
-                  marginTop: "18px",
-                  display: "grid",
-                  gap: "10px",
-                }}
-              >
-                <p style={{ margin: 0, color: "#111", fontWeight: 700 }}>Imagen actual</p>
-                <img
-                  src={currentImageUrl}
-                  alt="Premio actual"
+              <div>
+                <div
                   style={{
-                    width: "170px",
-                    height: "170px",
-                    objectFit: "cover",
-                    borderRadius: "18px",
-                    border: "1px solid #e5e7eb",
-                    boxShadow: "0 10px 22px rgba(0,0,0,0.06)",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                    gap: "16px",
                   }}
-                />
-              </div>
-            )}
+                >
+                  <Field label="Nombre del premio">
+                    <input
+                      className="pysta-input"
+                      type="text"
+                      placeholder="Nombre del premio"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </Field>
 
-            {itemValue && Number(itemValue) > 0 && (
+                  <Field label="Tipo de cliente">
+                    <select
+                      className="pysta-select"
+                      value={clientType}
+                      onChange={(e) => setClientType(e.target.value)}
+                    >
+                      <option value="">Selecciona tipo de cliente</option>
+                      <option value="Mayorista">Mayorista</option>
+                      <option value="Distribuidor">Distribuidor</option>
+                    </select>
+                  </Field>
+
+                  <Field label="Valor del premio">
+                    <input
+                      className="pysta-input"
+                      type="number"
+                      placeholder="Valor del premio"
+                      value={itemValue}
+                      onChange={(e) => setItemValue(e.target.value)}
+                    />
+                  </Field>
+
+                  <Field label="Stock disponible">
+                    <input
+                      className="pysta-input"
+                      type="number"
+                      placeholder="Stock disponible"
+                      value={stock}
+                      onChange={(e) => setStock(e.target.value)}
+                    />
+                  </Field>
+                </div>
+
+                <div style={{ marginTop: "16px" }}>
+                  <label style={labelStyle}>Foto del premio</label>
+                  <input
+                    className="pysta-input"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                  />
+                </div>
+
+                <div className="pysta-actions" style={{ marginTop: "18px" }}>
+                  <button
+                    onClick={handleGuardarPremio}
+                    disabled={subiendo}
+                    className="pysta-btn pysta-btn-dark"
+                    style={{ opacity: subiendo ? 0.7 : 1 }}
+                  >
+                    {subiendo
+                      ? "Subiendo..."
+                      : editingId
+                      ? "Actualizar premio"
+                      : "Guardar premio"}
+                  </button>
+
+                  {editingId && (
+                    <button onClick={limpiarFormulario} className="pysta-btn pysta-btn-light">
+                      Cancelar edición
+                    </button>
+                  )}
+                </div>
+
+                {mensaje && (
+                  <div style={{ marginTop: "16px" }}>
+                    <AlertMessage text={mensaje} type={tipoMensaje} />
+                  </div>
+                )}
+              </div>
+
               <div
                 style={{
-                  marginTop: "18px",
                   background: "#f9fafb",
                   border: "1px solid #e5e7eb",
-                  borderRadius: "16px",
-                  padding: "18px",
+                  borderRadius: "20px",
+                  padding: "20px",
                   display: "grid",
-                  gap: "8px",
+                  gap: "16px",
+                  alignContent: "start",
                 }}
               >
-                <p style={{ margin: 0, color: "#111" }}>
-                  <strong>Puntos requeridos calculados:</strong>{" "}
-                  {Math.ceil(Number(itemValue) / 100)}
-                </p>
-                <p style={{ margin: 0, color: "#111" }}>
-                  <strong>Compra mínima estimada:</strong> $
-                  {Math.ceil(Number(itemValue) / 0.06).toLocaleString("es-CO")}
-                </p>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "20px", color: "#111" }}>Vista rápida</h3>
+                  <p style={{ margin: "8px 0 0 0", color: "#6b7280", lineHeight: 1.5 }}>
+                    Verifica la imagen actual y los cálculos automáticos del premio.
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                  }}
+                >
+                  {currentImageUrl ? (
+                    <img
+                      src={currentImageUrl}
+                      alt="Premio actual"
+                      style={{
+                        width: "190px",
+                        height: "190px",
+                        objectFit: "cover",
+                        borderRadius: "20px",
+                        border: "1px solid #e5e7eb",
+                        boxShadow: "0 10px 22px rgba(0,0,0,0.06)",
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: "190px",
+                        height: "190px",
+                        borderRadius: "20px",
+                        border: "1px dashed #d1d5db",
+                        background: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#6b7280",
+                        textAlign: "center",
+                        padding: "16px",
+                      }}
+                    >
+                      Sin imagen seleccionada
+                    </div>
+                  )}
+                </div>
+
+                <InfoItem label="Puntos requeridos calculados" value={String(puntosCalculados)} />
+                <InfoItem label="Compra mínima estimada" value={compraMinimaEstimada ? `$${compraMinimaEstimada.toLocaleString("es-CO")}` : "-"} />
+                <InfoItem label="Premio más costoso actual" value={premioMasCaro ? premioMasCaro.name : "-"} />
               </div>
-            )}
-
-            <div className="pysta-actions" style={{ marginTop: "18px" }}>
-              <button
-                onClick={handleGuardarPremio}
-                disabled={subiendo}
-                className="pysta-btn pysta-btn-dark"
-                style={{ opacity: subiendo ? 0.7 : 1 }}
-              >
-                {subiendo
-                  ? "Subiendo..."
-                  : editingId
-                  ? "Actualizar premio"
-                  : "Guardar premio"}
-              </button>
-
-              {editingId && (
-                <button onClick={limpiarFormulario} className="pysta-btn pysta-btn-light">
-                  Cancelar edición
-                </button>
-              )}
             </div>
-
-            {mensaje && (
-              <div style={{ marginTop: "16px" }}>
-                <AlertMessage text={mensaje} type={tipoMensaje} />
-              </div>
-            )}
           </section>
 
           <section className="pysta-card" style={{ padding: "0", overflow: "hidden" }}>
             <div
               style={{
-                padding: "20px 24px",
+                padding: "22px 24px",
                 borderBottom: "1px solid #e5e7eb",
                 background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
               }}
@@ -502,16 +575,16 @@ export default function AdminPremiosPage() {
                       style={{
                         background: "#fff",
                         border: "1px solid #e5e7eb",
-                        borderRadius: "18px",
-                        padding: "18px",
+                        borderRadius: "20px",
+                        padding: "20px",
                         boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
                       }}
                     >
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "90px 1fr",
-                          gap: "16px",
+                          gridTemplateColumns: "96px 1fr",
+                          gap: "18px",
                           alignItems: "start",
                         }}
                       >
@@ -521,19 +594,19 @@ export default function AdminPremiosPage() {
                               src={premio.image_url}
                               alt={premio.name}
                               style={{
-                                width: "84px",
-                                height: "84px",
+                                width: "88px",
+                                height: "88px",
                                 objectFit: "cover",
-                                borderRadius: "16px",
+                                borderRadius: "18px",
                                 border: "1px solid #e5e7eb",
                               }}
                             />
                           ) : (
                             <div
                               style={{
-                                width: "84px",
-                                height: "84px",
-                                borderRadius: "16px",
+                                width: "88px",
+                                height: "88px",
+                                borderRadius: "18px",
                                 background: "#f3f4f6",
                                 border: "1px solid #e5e7eb",
                                 display: "flex",
@@ -557,10 +630,11 @@ export default function AdminPremiosPage() {
                               justifyContent: "space-between",
                               gap: "14px",
                               flexWrap: "wrap",
+                              alignItems: "flex-start",
                             }}
                           >
                             <div style={{ display: "grid", gap: "6px" }}>
-                              <h3 style={{ margin: 0, color: "#111", fontSize: "20px" }}>
+                              <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
                                 {premio.name}
                               </h3>
 
@@ -658,6 +732,39 @@ export default function AdminPremiosPage() {
         onConfirm={confirmarEliminarPremio}
       />
     </>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label style={labelStyle}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+function ResumenCard({
+  titulo,
+  valor,
+  descripcion,
+}: {
+  titulo: string
+  valor: string
+  descripcion: string
+}) {
+  return (
+    <div
+      className="pysta-card"
+      style={{
+        padding: "22px",
+        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
+      }}
+    >
+      <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
+      <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
+      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
+    </div>
   )
 }
 

@@ -10,6 +10,8 @@ export default function AdminLogoutButton() {
     await supabase.auth.signOut()
 
     localStorage.removeItem("admin_logged_in")
+    localStorage.removeItem("admin_email")
+    localStorage.removeItem("admin_nombre")
 
     router.replace("/admin/login")
   }
@@ -18,14 +20,15 @@ export default function AdminLogoutButton() {
     <button
       onClick={handleLogout}
       style={{
-        backgroundColor: "#111",
-        color: "white",
-        border: "none",
+        background: "linear-gradient(135deg, #111111 0%, #1f1f1f 100%)",
+        color: "#fff",
+        border: "1px solid rgba(255,255,255,0.08)",
         padding: "12px 18px",
-        borderRadius: "10px",
+        borderRadius: "14px",
         cursor: "pointer",
-        fontSize: "15px",
-        fontWeight: "bold",
+        fontSize: "14px",
+        fontWeight: 700,
+        boxShadow: "0 10px 24px rgba(0,0,0,0.10)",
       }}
     >
       Cerrar sesión

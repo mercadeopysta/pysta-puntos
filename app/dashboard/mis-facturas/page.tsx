@@ -20,6 +20,7 @@ export default function MisFacturasPage() {
   const [facturas, setFacturas] = useState<Factura[]>([])
   const [cargando, setCargando] = useState(true)
   const [mensaje, setMensaje] = useState("")
+  const [nombreCliente, setNombreCliente] = useState("")
 
   const cerrarSesionCliente = async () => {
     await supabase.auth.signOut()
@@ -32,10 +33,9 @@ export default function MisFacturasPage() {
   useEffect(() => {
     const cargarFacturas = async () => {
       try {
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession()
+        const sessionResponse = await supabase.auth.getSession()
+        const session = sessionResponse.data.session
+        const sessionError = sessionResponse.error
 
         if (sessionError || !session?.user) {
           await cerrarSesionCliente()
@@ -64,6 +64,7 @@ export default function MisFacturasPage() {
         localStorage.setItem("cliente_name", profile.full_name || "")
         localStorage.setItem("cliente_tipo", profile.client_type || "")
 
+        setNombreCliente(profile.full_name || "")
         setAutorizado(true)
 
         const { data, error } = await supabase
@@ -74,11 +75,10 @@ export default function MisFacturasPage() {
 
         if (error) {
           setMensaje("Ocurrió un error al cargar las facturas.")
-          setCargando(false)
           return
         }
 
-        setFacturas(data || [])
+        setFacturas((data as Factura[]) || [])
       } catch {
         await cerrarSesionCliente()
         return
@@ -90,6 +90,37 @@ export default function MisFacturasPage() {
     cargarFacturas()
   }, [router])
 
+  const traducirEstado = (estado: string) => {
+    if (estado === "approved") return "Aprobada"
+    if (estado === "rejected") return "Rechazada"
+    if (estado === "pending") return "Pendiente"
+    return estado
+  }
+
+  const estadoStyles = (estado: string) => {
+    if (estado === "approved") {
+      return {
+        background: "#ecfdf3",
+        color: "#166534",
+        border: "1px solid #bbf7d0",
+      }
+    }
+
+    if (estado === "rejected") {
+      return {
+        background: "#fef2f2",
+        color: "#991b1b",
+        border: "1px solid #fecaca",
+      }
+    }
+
+    return {
+      background: "#fff7ed",
+      color: "#9a3412",
+      border: "1px solid #fed7aa",
+    }
+  }
+
   if (cargando) {
     return (
       <main
@@ -99,6 +130,7 @@ export default function MisFacturasPage() {
           alignItems: "center",
           justifyContent: "center",
           fontFamily: "Arial, sans-serif",
+          background: "#f5f5f5",
         }}
       >
         Cargando facturas...
@@ -114,82 +146,211 @@ export default function MisFacturasPage() {
     <main
       style={{
         minHeight: "100vh",
-        backgroundColor: "#f5f5f5",
-        padding: "40px",
+        background: "linear-gradient(180deg, #f5f5f5 0%, #ececec 100%)",
+        padding: "32px 20px",
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
-        <div
+      <div style={{ maxWidth: "1180px", margin: "0 auto" }}>
+        <section
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "16px",
-            flexWrap: "wrap",
-            marginBottom: "10px",
+            background: "#ffffff",
+            borderRadius: "24px",
+            padding: "28px",
+            boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
+            marginBottom: "22px",
+            border: "1px solid rgba(0,0,0,0.04)",
           }}
         >
-          <h1 style={{ fontSize: "32px", color: "#111", margin: 0 }}>
-            Mis facturas
-          </h1>
-
-          <LogoutButton />
-        </div>
-
-        <p style={{ color: "#555", marginBottom: "30px" }}>
-          Aquí puedes ver las facturas que has registrado en Puntos Pysta.
-        </p>
-
-        {mensaje && (
-          <div style={cardStyle}>
-            <p style={{ color: "#333" }}>{mensaje}</p>
-          </div>
-        )}
-
-        {!mensaje && facturas.length === 0 && (
-          <div style={cardStyle}>
-            <p style={{ color: "#333" }}>Aún no has registrado facturas.</p>
-          </div>
-        )}
-
-        {!mensaje && facturas.length > 0 && (
           <div
             style={{
-              backgroundColor: "white",
-              borderRadius: "16px",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-              overflow: "hidden",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "18px",
+              flexWrap: "wrap",
             }}
           >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1.2fr 1fr 1fr 1fr",
-                backgroundColor: "#111",
-                color: "white",
-                padding: "16px",
-                fontWeight: "bold",
-              }}
-            >
-              <div>Número de factura</div>
-              <div>Fecha</div>
-              <div>Valor sin IVA</div>
-              <div>Estado</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  width: "84px",
+                  height: "84px",
+                  borderRadius: "18px",
+                  background: "#fff",
+                  border: "1px solid #e5e7eb",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                  boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
+                }}
+              >
+                <img
+                  src="/logo-pysta.png"
+                  alt="Pysta"
+                  style={{
+                    maxWidth: "76px",
+                    maxHeight: "76px",
+                    objectFit: "contain",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gap: "8px" }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    width: "fit-content",
+                    padding: "6px 12px",
+                    borderRadius: "999px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    background: "rgba(212, 175, 55, 0.14)",
+                    color: "#7a5b00",
+                    border: "1px solid rgba(212, 175, 55, 0.24)",
+                  }}
+                >
+                  Historial de facturas
+                </span>
+
+                <h1 style={{ margin: 0, fontSize: "34px", color: "#111" }}>
+                  Mis facturas
+                </h1>
+
+                <p style={{ margin: 0, color: "#6b7280", fontSize: "15px" }}>
+                  {nombreCliente ? `Cliente: ${nombreCliente}` : "Consulta las facturas registradas en tu cuenta"}
+                </p>
+              </div>
             </div>
 
-            {facturas.map((factura) => (
-              <div key={factura.id} style={rowStyle}>
-                <div>{factura.invoice_number}</div>
-                <div>{factura.invoice_date}</div>
-                <div>${Number(factura.amount_without_vat).toLocaleString("es-CO")}</div>
-                <div>{factura.status}</div>
-              </div>
-            ))}
+            <LogoutButton />
           </div>
+        </section>
+
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: "16px",
+            marginBottom: "22px",
+          }}
+        >
+          <ResumenCard
+            titulo="Facturas registradas"
+            valor={String(facturas.length)}
+            descripcion="Total cargadas en tu cuenta"
+          />
+          <ResumenCard
+            titulo="Facturas aprobadas"
+            valor={String(facturas.filter((f) => f.status === "approved").length)}
+            descripcion="Ya validadas por administración"
+          />
+          <ResumenCard
+            titulo="Facturas pendientes"
+            valor={String(facturas.filter((f) => f.status === "pending").length)}
+            descripcion="Aún en proceso de revisión"
+          />
+          <ResumenCard
+            titulo="Facturas rechazadas"
+            valor={String(facturas.filter((f) => f.status === "rejected").length)}
+            descripcion="Requieren revisión o nueva carga"
+          />
+        </section>
+
+        {mensaje ? (
+          <section style={messageCardStyle}>
+            {mensaje}
+          </section>
+        ) : facturas.length === 0 ? (
+          <section style={emptyCardStyle}>
+            <h2 style={{ margin: 0, fontSize: "24px", color: "#111" }}>Aún no has registrado facturas</h2>
+            <p style={{ margin: "10px 0 0 0", color: "#6b7280", lineHeight: 1.6 }}>
+              Cuando cargues tu primera factura, aparecerá aquí con su estado de revisión.
+            </p>
+
+            <div style={{ marginTop: "20px" }}>
+              <a href="/dashboard/facturas/nueva" style={buttonGold}>
+                Registrar nueva factura
+              </a>
+            </div>
+          </section>
+        ) : (
+          <section
+            style={{
+              display: "grid",
+              gap: "16px",
+            }}
+          >
+            {facturas.map((factura) => (
+              <article
+                key={factura.id}
+                style={{
+                  background: "#fff",
+                  borderRadius: "22px",
+                  padding: "22px",
+                  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
+                  border: "1px solid rgba(0,0,0,0.04)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                    flexWrap: "wrap",
+                    alignItems: "flex-start",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <div>
+                    <p style={{ margin: 0, color: "#6b7280", fontSize: "13px", fontWeight: 700 }}>
+                      FACTURA
+                    </p>
+                    <h3 style={{ margin: "6px 0 0 0", fontSize: "24px", color: "#111" }}>
+                      {factura.invoice_number}
+                    </h3>
+                  </div>
+
+                  <span
+                    style={{
+                      ...estadoStyles(factura.status),
+                      padding: "8px 12px",
+                      borderRadius: "999px",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {traducirEstado(factura.status)}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                    gap: "14px",
+                  }}
+                >
+                  <InfoItem
+                    label="Fecha"
+                    value={factura.invoice_date}
+                  />
+                  <InfoItem
+                    label="Valor sin IVA"
+                    value={`$${Number(factura.amount_without_vat).toLocaleString("es-CO")}`}
+                  />
+                  <InfoItem
+                    label="Estado actual"
+                    value={traducirEstado(factura.status)}
+                  />
+                </div>
+              </article>
+            ))}
+          </section>
         )}
 
-        <div style={{ marginTop: "30px", display: "flex", gap: "16px", flexWrap: "wrap" }}>
+        <div style={{ marginTop: "28px", display: "flex", gap: "14px", flexWrap: "wrap" }}>
           <a href="/dashboard/facturas/nueva" style={buttonGold}>
             Registrar nueva factura
           </a>
@@ -203,19 +364,67 @@ export default function MisFacturasPage() {
   )
 }
 
-const cardStyle = {
-  backgroundColor: "white",
-  borderRadius: "16px",
-  boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-  padding: "24px",
+function ResumenCard({
+  titulo,
+  valor,
+  descripcion,
+}: {
+  titulo: string
+  valor: string
+  descripcion: string
+}) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        borderRadius: "22px",
+        padding: "22px",
+        boxShadow: "0 10px 28px rgba(0,0,0,0.07)",
+        border: "1px solid rgba(0,0,0,0.04)",
+      }}
+    >
+      <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
+      <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
+      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
+    </div>
+  )
 }
 
-const rowStyle = {
-  display: "grid",
-  gridTemplateColumns: "1.2fr 1fr 1fr 1fr",
-  padding: "16px",
-  borderBottom: "1px solid #eee",
-  color: "#333",
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        background: "#f9fafb",
+        border: "1px solid #e5e7eb",
+        borderRadius: "16px",
+        padding: "14px 16px",
+      }}
+    >
+      <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
+        {label}
+      </p>
+      <p style={{ margin: 0, fontSize: "16px", color: "#111", lineHeight: 1.5 }}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
+const messageCardStyle = {
+  background: "#fff",
+  borderRadius: "22px",
+  padding: "22px",
+  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
+  border: "1px solid rgba(0,0,0,0.04)",
+  color: "#111",
+}
+
+const emptyCardStyle = {
+  background: "#fff",
+  borderRadius: "22px",
+  padding: "28px",
+  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
+  border: "1px solid rgba(0,0,0,0.04)",
 }
 
 const buttonDark = {
@@ -223,8 +432,9 @@ const buttonDark = {
   color: "white",
   textDecoration: "none",
   padding: "14px 24px",
-  borderRadius: "10px",
+  borderRadius: "14px",
   display: "inline-block",
+  fontWeight: "bold" as const,
 }
 
 const buttonGold = {
@@ -232,7 +442,7 @@ const buttonGold = {
   color: "#111",
   textDecoration: "none",
   padding: "14px 24px",
-  borderRadius: "10px",
+  borderRadius: "14px",
   display: "inline-block",
   fontWeight: "bold" as const,
 }

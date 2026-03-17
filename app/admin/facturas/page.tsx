@@ -213,6 +213,11 @@ export default function AdminFacturasPage() {
     })
   }, [facturas, filtroNombre, filtroDocumento, filtroEstado])
 
+  const totalAprobadas = facturas.filter((f) => f.status === "approved").length
+  const totalPendientes = facturas.filter((f) => f.status === "pending").length
+  const totalRechazadas = facturas.filter((f) => f.status === "rejected").length
+  const valorTotal = facturas.reduce((acc, f) => acc + Number(f.amount_without_vat || 0), 0)
+
   if (!autorizado) {
     return (
       <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -229,13 +234,20 @@ export default function AdminFacturasPage() {
         <div className="pysta-shell" style={{ maxWidth: "1650px" }}>
           <AdminMenu />
 
-          <section className="pysta-card" style={{ padding: "28px", marginBottom: "22px" }}>
+          <section
+            className="pysta-card"
+            style={{
+              padding: "30px",
+              marginBottom: "22px",
+              background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
+            }}
+          >
             <div className="pysta-topbar">
-              <div style={{ display: "grid", gap: "8px" }}>
+              <div style={{ display: "grid", gap: "10px" }}>
                 <span className="pysta-badge">Gestión documental</span>
                 <h1 className="pysta-section-title">Administrar facturas</h1>
                 <p className="pysta-subtitle">
-                  Revisa, aprueba, rechaza, deja pendientes o elimina las facturas subidas por los clientes.
+                  Revisa, aprueba, rechaza o elimina las facturas cargadas por los clientes.
                 </p>
               </div>
 
@@ -243,11 +255,26 @@ export default function AdminFacturasPage() {
             </div>
           </section>
 
+          <section
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "16px",
+              marginBottom: "22px",
+            }}
+          >
+            <ResumenCard titulo="Facturas totales" valor={String(facturas.length)} descripcion="Documentos registrados" />
+            <ResumenCard titulo="Aprobadas" valor={String(totalAprobadas)} descripcion="Ya validadas" />
+            <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="En revisión" />
+            <ResumenCard titulo="Rechazadas" valor={String(totalRechazadas)} descripcion="No aprobadas" />
+            <ResumenCard titulo="Valor acumulado" valor={`$${valorTotal.toLocaleString("es-CO")}`} descripcion="Suma sin IVA" />
+          </section>
+
           <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
             <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
               <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
               <p style={{ margin: 0, color: "#6b7280" }}>
-                Encuentra más rápido las facturas por cliente, documento o estado.
+                Encuentra facturas por cliente, documento o estado de validación.
               </p>
             </div>
 
@@ -317,7 +344,7 @@ export default function AdminFacturasPage() {
           <section className="pysta-card" style={{ padding: "0", overflow: "hidden" }}>
             <div
               style={{
-                padding: "20px 24px",
+                padding: "22px 24px",
                 borderBottom: "1px solid #e5e7eb",
                 background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
               }}
@@ -341,8 +368,8 @@ export default function AdminFacturasPage() {
                       style={{
                         background: "#fff",
                         border: "1px solid #e5e7eb",
-                        borderRadius: "18px",
-                        padding: "18px",
+                        borderRadius: "20px",
+                        padding: "20px",
                         boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
                       }}
                     >
@@ -353,10 +380,11 @@ export default function AdminFacturasPage() {
                           gap: "14px",
                           flexWrap: "wrap",
                           marginBottom: "14px",
+                          alignItems: "flex-start",
                         }}
                       >
-                        <div style={{ display: "grid", gap: "6px" }}>
-                          <h3 style={{ margin: 0, color: "#111", fontSize: "20px" }}>
+                        <div style={{ display: "grid", gap: "8px" }}>
+                          <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
                             {factura.client_name}
                           </h3>
 
@@ -484,6 +512,30 @@ export default function AdminFacturasPage() {
         onConfirm={confirmarEliminarFactura}
       />
     </>
+  )
+}
+
+function ResumenCard({
+  titulo,
+  valor,
+  descripcion,
+}: {
+  titulo: string
+  valor: string
+  descripcion: string
+}) {
+  return (
+    <div
+      className="pysta-card"
+      style={{
+        padding: "22px",
+        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
+      }}
+    >
+      <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
+      <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
+      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
+    </div>
   )
 }
 

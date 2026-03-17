@@ -299,6 +299,11 @@ export default function AdminClientesPage() {
     })
   }, [clientes, filtroNombre, filtroDocumento, filtroCorreo, filtroTipo, filtroAprobacion])
 
+  const totalAprobados = clientes.filter((c) => c.is_approved).length
+  const totalPendientes = clientes.filter((c) => !c.is_approved).length
+  const totalActivos = clientes.filter((c) => c.is_active).length
+  const totalInactivos = clientes.filter((c) => !c.is_active).length
+
   if (!autorizado) {
     return (
       <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -312,16 +317,23 @@ export default function AdminClientesPage() {
   return (
     <>
       <main className="pysta-page">
-        <div className="pysta-shell" style={{ maxWidth: "1520px" }}>
+        <div className="pysta-shell" style={{ maxWidth: "1540px" }}>
           <AdminMenu />
 
-          <section className="pysta-card" style={{ padding: "28px", marginBottom: "22px" }}>
+          <section
+            className="pysta-card"
+            style={{
+              padding: "30px",
+              marginBottom: "22px",
+              background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
+            }}
+          >
             <div className="pysta-topbar">
-              <div style={{ display: "grid", gap: "8px" }}>
+              <div style={{ display: "grid", gap: "10px" }}>
                 <span className="pysta-badge">Gestión administrativa</span>
                 <h1 className="pysta-section-title">Administrar clientes</h1>
                 <p className="pysta-subtitle">
-                  Edita datos de clientes, apruébalos manualmente y controla su acceso a la app.
+                  Edita datos, aprueba accesos, asigna asesores y controla el estado de cada cliente.
                 </p>
               </div>
 
@@ -329,11 +341,26 @@ export default function AdminClientesPage() {
             </div>
           </section>
 
+          <section
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "16px",
+              marginBottom: "22px",
+            }}
+          >
+            <ResumenCard titulo="Clientes totales" valor={String(clientes.length)} descripcion="Base total registrada" />
+            <ResumenCard titulo="Aprobados" valor={String(totalAprobados)} descripcion="Con acceso habilitado" />
+            <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="Por aprobar manualmente" />
+            <ResumenCard titulo="Activos" valor={String(totalActivos)} descripcion="Actualmente habilitados" />
+            <ResumenCard titulo="Inactivos" valor={String(totalInactivos)} descripcion="Acceso deshabilitado" />
+          </section>
+
           <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
             <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
               <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
               <p style={{ margin: 0, color: "#6b7280" }}>
-                Usa los filtros para encontrar clientes más rápido.
+                Encuentra clientes más rápido filtrando por nombre, documento, correo, tipo o aprobación.
               </p>
             </div>
 
@@ -398,6 +425,9 @@ export default function AdminClientesPage() {
               <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>
                 {editingId ? "Editar cliente" : "Selecciona un cliente para editar"}
               </h2>
+              <p style={{ margin: 0, color: "#6b7280" }}>
+                Modifica los datos del cliente seleccionado y define su acceso y aprobación.
+              </p>
             </div>
 
             <div
@@ -407,39 +437,63 @@ export default function AdminClientesPage() {
                 gap: "16px",
               }}
             >
-              <input className="pysta-input" type="text" placeholder="Nombre completo o razón social" value={fullName} onChange={(e) => setFullName(e.target.value)} disabled={!editingId} />
-              <select className="pysta-select" value={clientType} onChange={(e) => setClientType(e.target.value)} disabled={!editingId}>
-                <option value="">Selecciona tipo de cliente</option>
-                <option value="Mayorista">Mayorista</option>
-                <option value="Distribuidor">Distribuidor</option>
-              </select>
-              <select className="pysta-select" value={advisorName} onChange={(e) => setAdvisorName(e.target.value)} disabled={!editingId}>
-                <option value="">Selecciona asesor</option>
-                {asesores.map((asesor) => (
-                  <option key={asesor.id} value={asesor.name}>
-                    {asesor.name}
-                  </option>
-                ))}
-              </select>
-              <select className="pysta-select" value={documentType} onChange={(e) => setDocumentType(e.target.value)} disabled={!editingId}>
-                <option value="">Selecciona tipo de documento</option>
-                <option value="CC">CC</option>
-                <option value="NIT">NIT</option>
-                <option value="OTRO">OTRO</option>
-              </select>
-              <input className="pysta-input" type="text" placeholder="Número de documento" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} disabled={!editingId} />
-              <input className="pysta-input" type="text" placeholder="WhatsApp" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} disabled={!editingId} />
-              <input className="pysta-input" type="email" placeholder="Correo electrónico" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!editingId} />
+              <Field label="Nombre completo o razón social">
+                <input className="pysta-input" type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} disabled={!editingId} />
+              </Field>
 
-              <select className="pysta-select" value={isActive ? "true" : "false"} onChange={(e) => setIsActive(e.target.value === "true")} disabled={!editingId}>
-                <option value="true">Activo</option>
-                <option value="false">Inactivo</option>
-              </select>
+              <Field label="Tipo de cliente">
+                <select className="pysta-select" value={clientType} onChange={(e) => setClientType(e.target.value)} disabled={!editingId}>
+                  <option value="">Selecciona tipo de cliente</option>
+                  <option value="Mayorista">Mayorista</option>
+                  <option value="Distribuidor">Distribuidor</option>
+                </select>
+              </Field>
 
-              <select className="pysta-select" value={isApproved ? "true" : "false"} onChange={(e) => setIsApproved(e.target.value === "true")} disabled={!editingId}>
-                <option value="true">Aprobado</option>
-                <option value="false">Pendiente</option>
-              </select>
+              <Field label="Asesor">
+                <select className="pysta-select" value={advisorName} onChange={(e) => setAdvisorName(e.target.value)} disabled={!editingId}>
+                  <option value="">Selecciona asesor</option>
+                  {asesores.map((asesor) => (
+                    <option key={asesor.id} value={asesor.name}>
+                      {asesor.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Tipo de documento">
+                <select className="pysta-select" value={documentType} onChange={(e) => setDocumentType(e.target.value)} disabled={!editingId}>
+                  <option value="">Selecciona tipo de documento</option>
+                  <option value="CC">CC</option>
+                  <option value="NIT">NIT</option>
+                  <option value="OTRO">OTRO</option>
+                </select>
+              </Field>
+
+              <Field label="Número de documento">
+                <input className="pysta-input" type="text" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} disabled={!editingId} />
+              </Field>
+
+              <Field label="WhatsApp">
+                <input className="pysta-input" type="text" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} disabled={!editingId} />
+              </Field>
+
+              <Field label="Correo electrónico">
+                <input className="pysta-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!editingId} />
+              </Field>
+
+              <Field label="Estado">
+                <select className="pysta-select" value={isActive ? "true" : "false"} onChange={(e) => setIsActive(e.target.value === "true")} disabled={!editingId}>
+                  <option value="true">Activo</option>
+                  <option value="false">Inactivo</option>
+                </select>
+              </Field>
+
+              <Field label="Aprobación">
+                <select className="pysta-select" value={isApproved ? "true" : "false"} onChange={(e) => setIsApproved(e.target.value === "true")} disabled={!editingId}>
+                  <option value="true">Aprobado</option>
+                  <option value="false">Pendiente</option>
+                </select>
+              </Field>
             </div>
 
             <div className="pysta-actions" style={{ marginTop: "18px" }}>
@@ -472,7 +526,7 @@ export default function AdminClientesPage() {
           <section className="pysta-card" style={{ padding: "0", overflow: "hidden" }}>
             <div
               style={{
-                padding: "20px 24px",
+                padding: "22px 24px",
                 borderBottom: "1px solid #e5e7eb",
                 background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
               }}
@@ -496,8 +550,8 @@ export default function AdminClientesPage() {
                       style={{
                         background: "#fff",
                         border: "1px solid #e5e7eb",
-                        borderRadius: "18px",
-                        padding: "18px",
+                        borderRadius: "20px",
+                        padding: "20px",
                         boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
                       }}
                     >
@@ -508,12 +562,14 @@ export default function AdminClientesPage() {
                           gap: "14px",
                           flexWrap: "wrap",
                           marginBottom: "14px",
+                          alignItems: "flex-start",
                         }}
                       >
-                        <div style={{ display: "grid", gap: "6px" }}>
-                          <h3 style={{ margin: 0, color: "#111", fontSize: "20px" }}>
+                        <div style={{ display: "grid", gap: "8px" }}>
+                          <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
                             {cliente.full_name}
                           </h3>
+
                           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                             <span style={miniBadge}>{cliente.client_type || "Sin tipo"}</span>
 
@@ -615,6 +671,39 @@ export default function AdminClientesPage() {
         onConfirm={confirmarEliminarCliente}
       />
     </>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label style={labelStyle}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+function ResumenCard({
+  titulo,
+  valor,
+  descripcion,
+}: {
+  titulo: string
+  valor: string
+  descripcion: string
+}) {
+  return (
+    <div
+      className="pysta-card"
+      style={{
+        padding: "22px",
+        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
+      }}
+    >
+      <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
+      <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
+      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
+    </div>
   )
 }
 

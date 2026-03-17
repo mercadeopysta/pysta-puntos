@@ -67,9 +67,8 @@ export default function AdminRedencionesPage() {
   const [filtroFecha, setFiltroFecha] = useState("")
 
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [accionConfirmacion, setAccionConfirmacion] = useState<"cancelar" | "eliminar" | null>(null)
-  const [grupoSeleccionado, setGrupoSeleccionado] = useState<GrupoRedencion | null>(null)
-  const [procesandoAccion, setProcesandoAccion] = useState(false)
+  const [grupoAEliminar, setGrupoAEliminar] = useState<GrupoRedencion | null>(null)
+  const [eliminando, setEliminando] = useState(false)
 
   useEffect(() => {
     const adminLogueado = localStorage.getItem("admin_logged_in")
@@ -145,14 +144,13 @@ export default function AdminRedencionesPage() {
           ? redencion.redemption_group_id
           : `${redencion.user_email}__${dateOnly}__legacy`
 
-      const key = groupId
       const clientName = profilesMap[redencion.user_email]?.full_name || redencion.user_email
       const documentNumber = profilesMap[redencion.user_email]?.document_number || ""
       const advisorName = profilesMap[redencion.user_email]?.advisor_name || ""
 
-      if (!grouped.has(key)) {
-        grouped.set(key, {
-          key,
+      if (!grouped.has(groupId)) {
+        grouped.set(groupId, {
+          key: groupId,
           group_id: groupId,
           user_email: redencion.user_email,
           client_name: clientName,
@@ -168,7 +166,7 @@ export default function AdminRedencionesPage() {
         })
       }
 
-      const current = grouped.get(key)!
+      const current = grouped.get(groupId)!
       current.items.push({
         id: redencion.id,
         reward_id: redencion.reward_id,
@@ -251,7 +249,7 @@ export default function AdminRedencionesPage() {
         const itemsNoCancelados = grupo.items.filter((item) => item.status !== "cancelled")
 
         if (itemsNoCancelados.length === 0) {
-          setTipoMensaje("warning")
+          setTipoMensaje("info")
           setMensaje("Este grupo ya estaba cancelado.")
           return
         }
@@ -299,103 +297,53 @@ export default function AdminRedencionesPage() {
     cargarRedenciones()
   }
 
-  const pedirCancelarGrupo = (grupo: GrupoRedencion) => {
-    setGrupoSeleccionado(grupo)
-    setAccionConfirmacion("cancelar")
-    setConfirmOpen(true)
-  }
-
   const pedirEliminarGrupo = (grupo: GrupoRedencion) => {
-    setGrupoSeleccionado(grupo)
-    setAccionConfirmacion("eliminar")
+    setGrupoAEliminar(grupo)
     setConfirmOpen(true)
   }
 
-  const cerrarModalConfirmacion = () => {
-    if (procesandoAccion) return
+  const cerrarModalEliminar = () => {
+    if (eliminando) return
     setConfirmOpen(false)
-    setGrupoSeleccionado(null)
-    setAccionConfirmacion(null)
+    setGrupoAEliminar(null)
   }
 
-  const confirmarAccionGrupo = async () => {
-    if (!grupoSeleccionado || !accionConfirmacion) return
+  const confirmarEliminarGrupo = async () => {
+    if (!grupoAEliminar) return
 
     setMensaje("")
-    setProcesandoAccion(true)
+    setEliminando(true)
 
     try {
-      if (accionConfirmacion === "cancelar") {
-        const itemsNoCancelados = grupoSeleccionado.items.filter((item) => item.status !== "cancelled")
+      const itemsNoCancelados = grupoAEliminar.items.filter((item) => item.status !== "cancelled")
 
-        if (itemsNoCancelados.length === 0) {
-          setTipoMensaje("warning")
-          setMensaje("Este grupo ya estaba cancelado.")
-          setProcesandoAccion(false)
-          setConfirmOpen(false)
-          setGrupoSeleccionado(null)
-          setAccionConfirmacion(null)
-          return
-        }
-
+      if (itemsNoCancelados.length > 0) {
         await devolverStockDeItems(itemsNoCancelados)
-
-        const idsACancelar = itemsNoCancelados.map((item) => item.id)
-
-        const { error } = await supabase
-          .from("redemptions")
-          .update({ status: "cancelled" })
-          .in("id", idsACancelar)
-
-        if (error) {
-          setTipoMensaje("error")
-          setMensaje("Ocurrió un error al cancelar la redención: " + error.message)
-          setProcesandoAccion(false)
-          return
-        }
-
-        setTipoMensaje("success")
-        setMensaje("Redención cancelada correctamente. Se devolvieron stock y puntos.")
       }
 
-      if (accionConfirmacion === "eliminar") {
-        const itemsNoCancelados = grupoSeleccionado.items.filter((item) => item.status !== "cancelled")
+      const { error } = await supabase
+        .from("redemptions")
+        .delete()
+        .in("id", grupoAEliminar.ids)
 
-        if (itemsNoCancelados.length > 0) {
-          await devolverStockDeItems(itemsNoCancelados)
-        }
-
-        const { error } = await supabase
-          .from("redemptions")
-          .delete()
-          .in("id", grupoSeleccionado.ids)
-
-        if (error) {
-          setTipoMensaje("error")
-          setMensaje("Ocurrió un error al eliminar la solicitud: " + error.message)
-          setProcesandoAccion(false)
-          return
-        }
-
-        setTipoMensaje("success")
-        setMensaje("Solicitud eliminada correctamente.")
+      if (error) {
+        setTipoMensaje("error")
+        setMensaje("Ocurrió un error al eliminar la solicitud: " + error.message)
+        setEliminando(false)
+        return
       }
 
+      setTipoMensaje("success")
+      setMensaje("Solicitud eliminada correctamente.")
       await cargarRedenciones()
-      setProcesandoAccion(false)
+      setEliminando(false)
       setConfirmOpen(false)
-      setGrupoSeleccionado(null)
-      setAccionConfirmacion(null)
+      setGrupoAEliminar(null)
     } catch (err) {
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : accionConfirmacion === "cancelar"
-          ? "Error al cancelar la solicitud."
-          : "Error al eliminar la solicitud."
+      const errorMessage = err instanceof Error ? err.message : "Error al eliminar la solicitud."
       setTipoMensaje("error")
       setMensaje(errorMessage)
-      setProcesandoAccion(false)
+      setEliminando(false)
     }
   }
 
@@ -409,8 +357,18 @@ export default function AdminRedencionesPage() {
     return status
   }
 
-  const estadoBadge = (status: string) => {
-    if (status === "approved") {
+  const resumirPremios = (items: GrupoItem[]) => {
+    const conteo: Record<string, number> = {}
+
+    items.forEach((item) => {
+      conteo[item.reward_name] = (conteo[item.reward_name] || 0) + 1
+    })
+
+    return Object.entries(conteo).map(([nombre, cantidad]) => `${cantidad} x ${nombre}`)
+  }
+
+  const estadoBadge = (estado: string) => {
+    if (estado === "approved") {
       return {
         background: "#ecfdf3",
         color: "#166534",
@@ -418,23 +376,7 @@ export default function AdminRedencionesPage() {
       }
     }
 
-    if (status === "shipped") {
-      return {
-        background: "#eff6ff",
-        color: "#1d4ed8",
-        border: "1px solid #bfdbfe",
-      }
-    }
-
-    if (status === "delivered") {
-      return {
-        background: "#f0fdf4",
-        color: "#166534",
-        border: "1px solid #bbf7d0",
-      }
-    }
-
-    if (status === "cancelled") {
+    if (estado === "cancelled") {
       return {
         background: "#fef2f2",
         color: "#991b1b",
@@ -442,11 +384,19 @@ export default function AdminRedencionesPage() {
       }
     }
 
-    if (status === "mixed") {
+    if (estado === "shipped" || estado === "delivered") {
       return {
-        background: "#faf5ff",
-        color: "#7e22ce",
-        border: "1px solid #e9d5ff",
+        background: "#eff6ff",
+        color: "#1d4ed8",
+        border: "1px solid #bfdbfe",
+      }
+    }
+
+    if (estado === "mixed") {
+      return {
+        background: "#f3f4f6",
+        color: "#4b5563",
+        border: "1px solid #d1d5db",
       }
     }
 
@@ -457,15 +407,12 @@ export default function AdminRedencionesPage() {
     }
   }
 
-  const resumirPremios = (items: GrupoItem[]) => {
-    const conteo: Record<string, number> = {}
-
-    items.forEach((item) => {
-      conteo[item.reward_name] = (conteo[item.reward_name] || 0) + 1
-    })
-
-    return Object.entries(conteo).map(([nombre, cantidad]) => `${cantidad} x ${nombre}`)
-  }
+  const totalSolicitudes = grupos.length
+  const totalItems = redenciones.length
+  const totalPuntos = redenciones.reduce((acc, r) => acc + Number(r.points_used || 0), 0)
+  const totalPendientes = grupos.filter((g) => g.status === "requested").length
+  const totalAprobadas = grupos.filter((g) => g.status === "approved").length
+  const totalCanceladas = grupos.filter((g) => g.status === "cancelled").length
 
   if (!autorizado) {
     return (
@@ -480,16 +427,23 @@ export default function AdminRedencionesPage() {
   return (
     <>
       <main className="pysta-page">
-        <div className="pysta-shell" style={{ maxWidth: "1620px" }}>
+        <div className="pysta-shell" style={{ maxWidth: "1640px" }}>
           <AdminMenu />
 
-          <section className="pysta-card" style={{ padding: "28px", marginBottom: "22px" }}>
+          <section
+            className="pysta-card"
+            style={{
+              padding: "30px",
+              marginBottom: "22px",
+              background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
+            }}
+          >
             <div className="pysta-topbar">
-              <div style={{ display: "grid", gap: "8px" }}>
-                <span className="pysta-badge">Gestión de solicitudes</span>
+              <div style={{ display: "grid", gap: "10px" }}>
+                <span className="pysta-badge">Gestión de redenciones</span>
                 <h1 className="pysta-section-title">Administrar redenciones</h1>
                 <p className="pysta-subtitle">
-                  Aquí ves las redenciones agrupadas por solicitud real del cliente y puedes cambiar su estado.
+                  Revisa solicitudes reales agrupadas, cambia su estado y controla devoluciones de stock.
                 </p>
               </div>
 
@@ -497,11 +451,27 @@ export default function AdminRedencionesPage() {
             </div>
           </section>
 
+          <section
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "16px",
+              marginBottom: "22px",
+            }}
+          >
+            <ResumenCard titulo="Solicitudes" valor={String(totalSolicitudes)} descripcion="Grupos reales de redención" />
+            <ResumenCard titulo="Ítems redimidos" valor={String(totalItems)} descripcion="Premios solicitados" />
+            <ResumenCard titulo="Puntos usados" valor={String(totalPuntos)} descripcion="Total comprometido" />
+            <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="Aún por gestionar" />
+            <ResumenCard titulo="Aprobadas" valor={String(totalAprobadas)} descripcion="Listas para proceso" />
+            <ResumenCard titulo="Canceladas" valor={String(totalCanceladas)} descripcion="Con stock devuelto" />
+          </section>
+
           <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
             <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
               <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
               <p style={{ margin: 0, color: "#6b7280" }}>
-                Busca por cliente, correo, documento, asesor, estado o fecha.
+                Filtra por cliente, correo, documento, asesor, estado o fecha de solicitud.
               </p>
             </div>
 
@@ -573,12 +543,12 @@ export default function AdminRedencionesPage() {
           <section className="pysta-card" style={{ padding: "0", overflow: "hidden" }}>
             <div
               style={{
-                padding: "20px 24px",
+                padding: "22px 24px",
                 borderBottom: "1px solid #e5e7eb",
                 background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
               }}
             >
-              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Listado de solicitudes</h2>
+              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Listado de redenciones</h2>
               <p style={{ margin: "6px 0 0 0", color: "#6b7280" }}>
                 Total encontradas: {gruposFiltrados.length}
               </p>
@@ -597,8 +567,8 @@ export default function AdminRedencionesPage() {
                       style={{
                         background: "#fff",
                         border: "1px solid #e5e7eb",
-                        borderRadius: "18px",
-                        padding: "18px",
+                        borderRadius: "20px",
+                        padding: "20px",
                         boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
                       }}
                     >
@@ -609,16 +579,16 @@ export default function AdminRedencionesPage() {
                           gap: "14px",
                           flexWrap: "wrap",
                           marginBottom: "14px",
+                          alignItems: "flex-start",
                         }}
                       >
-                        <div style={{ display: "grid", gap: "6px" }}>
-                          <h3 style={{ margin: 0, color: "#111", fontSize: "20px" }}>
+                        <div style={{ display: "grid", gap: "8px" }}>
+                          <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
                             {grupo.client_name}
                           </h3>
 
                           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                             <span style={miniBadge}>{grupo.date_label}</span>
-
                             <span
                               style={{
                                 ...miniBadge,
@@ -656,9 +626,9 @@ export default function AdminRedencionesPage() {
                           </button>
 
                           <button
-                            onClick={() => pedirCancelarGrupo(grupo)}
+                            onClick={() => cambiarEstadoGrupo(grupo, "cancelled")}
                             className="pysta-btn pysta-btn-light"
-                            style={smallActionBtn}
+                            style={{ ...smallActionBtn, border: "1px solid #e5e7eb" }}
                           >
                             Cancelar
                           </button>
@@ -676,44 +646,34 @@ export default function AdminRedencionesPage() {
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
                           gap: "12px",
-                          marginBottom: "12px",
                         }}
                       >
                         <InfoItem label="Correo" value={grupo.user_email} />
                         <InfoItem label="Documento" value={grupo.document_number || "-"} />
                         <InfoItem label="Asesor" value={grupo.advisor_name || "-"} />
-                        <InfoItem label="Puntos totales" value={String(grupo.points_total)} />
+                        <InfoItem label="Puntos usados" value={String(grupo.points_total)} />
                       </div>
 
                       <div
                         style={{
+                          marginTop: "12px",
                           background: "#f9fafb",
                           border: "1px solid #e5e7eb",
                           borderRadius: "14px",
-                          padding: "14px",
+                          padding: "12px 14px",
                         }}
                       >
-                        <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
-                          Premios redimidos
+                        <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
+                          Premios solicitados
                         </p>
 
-                        <div style={{ display: "grid", gap: "8px" }}>
+                        <div style={{ display: "grid", gap: "6px" }}>
                           {resumirPremios(grupo.items).map((texto, index) => (
-                            <div
-                              key={`${grupo.key}-${index}`}
-                              style={{
-                                color: "#111",
-                                lineHeight: 1.5,
-                                padding: "8px 10px",
-                                background: "#fff",
-                                border: "1px solid #e5e7eb",
-                                borderRadius: "10px",
-                              }}
-                            >
-                              {texto}
-                            </div>
+                            <p key={`${grupo.key}-${index}`} style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>
+                              • {texto}
+                            </p>
                           ))}
                         </div>
                       </div>
@@ -728,26 +688,44 @@ export default function AdminRedencionesPage() {
 
       <ConfirmModal
         open={confirmOpen}
-        title={
-          accionConfirmacion === "cancelar" ? "Cancelar redención" : "Eliminar solicitud"
-        }
+        title="Eliminar solicitud"
         message={
-          grupoSeleccionado
-            ? accionConfirmacion === "cancelar"
-              ? `¿Seguro que deseas cancelar la solicitud de ${grupoSeleccionado.client_name}? Se devolverán stock y puntos de los ítems no cancelados.`
-              : `¿Seguro que deseas eliminar la solicitud de ${grupoSeleccionado.client_name}? Esta acción eliminará la solicitud y devolverá stock de los ítems no cancelados.`
+          grupoAEliminar
+            ? `¿Seguro que deseas eliminar la solicitud de ${grupoAEliminar.client_name}? Esta acción no se puede deshacer.`
             : ""
         }
-        confirmText={
-          accionConfirmacion === "cancelar" ? "Sí, cancelar" : "Sí, eliminar"
-        }
-        cancelText="Cerrar"
+        confirmText="Sí, eliminar"
+        cancelText="Cancelar"
         danger
-        loading={procesandoAccion}
-        onCancel={cerrarModalConfirmacion}
-        onConfirm={confirmarAccionGrupo}
+        loading={eliminando}
+        onCancel={cerrarModalEliminar}
+        onConfirm={confirmarEliminarGrupo}
       />
     </>
+  )
+}
+
+function ResumenCard({
+  titulo,
+  valor,
+  descripcion,
+}: {
+  titulo: string
+  valor: string
+  descripcion: string
+}) {
+  return (
+    <div
+      className="pysta-card"
+      style={{
+        padding: "22px",
+        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
+      }}
+    >
+      <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
+      <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
+      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
+    </div>
   )
 }
 

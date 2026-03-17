@@ -43,6 +43,7 @@ export default function RedencionesPage() {
   const [cargando, setCargando] = useState(true)
   const [mensaje, setMensaje] = useState("")
   const [asesorNombre, setAsesorNombre] = useState("")
+  const [nombreCliente, setNombreCliente] = useState("")
 
   const cerrarSesionCliente = async () => {
     await supabase.auth.signOut()
@@ -55,10 +56,9 @@ export default function RedencionesPage() {
   useEffect(() => {
     const cargarRedenciones = async () => {
       try {
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession()
+        const sessionResponse = await supabase.auth.getSession()
+        const session = sessionResponse.data.session
+        const sessionError = sessionResponse.error
 
         if (sessionError || !session?.user) {
           await cerrarSesionCliente()
@@ -89,6 +89,7 @@ export default function RedencionesPage() {
         localStorage.setItem("cliente_name", perfil.full_name || "")
         localStorage.setItem("cliente_tipo", perfil.client_type || "")
 
+        setNombreCliente(perfil.full_name || "")
         setAsesorNombre(perfil.advisor_name || "")
         setAutorizado(true)
 
@@ -100,7 +101,6 @@ export default function RedencionesPage() {
 
         if (error) {
           setMensaje("Ocurrió un error al cargar las redenciones.")
-          setCargando(false)
           return
         }
 
@@ -176,6 +176,38 @@ export default function RedencionesPage() {
     return Object.entries(conteo).map(([nombre, cantidad]) => `${cantidad} x ${nombre}`)
   }
 
+  const estadoStyles = (estado: string) => {
+    if (estado === "approved") {
+      return {
+        background: "#ecfdf3",
+        color: "#166534",
+        border: "1px solid #bbf7d0",
+      }
+    }
+
+    if (estado === "cancelled") {
+      return {
+        background: "#fef2f2",
+        color: "#991b1b",
+        border: "1px solid #fecaca",
+      }
+    }
+
+    if (estado === "shipped" || estado === "delivered") {
+      return {
+        background: "#eff6ff",
+        color: "#1d4ed8",
+        border: "1px solid #bfdbfe",
+      }
+    }
+
+    return {
+      background: "#fff7ed",
+      color: "#9a3412",
+      border: "1px solid #fed7aa",
+    }
+  }
+
   if (cargando) {
     return (
       <main
@@ -185,6 +217,7 @@ export default function RedencionesPage() {
           alignItems: "center",
           justifyContent: "center",
           fontFamily: "Arial, sans-serif",
+          background: "#f5f5f5",
         }}
       >
         Cargando redenciones...
@@ -200,106 +233,216 @@ export default function RedencionesPage() {
     <main
       style={{
         minHeight: "100vh",
-        backgroundColor: "#f5f5f5",
-        padding: "40px",
+        background: "linear-gradient(180deg, #f5f5f5 0%, #ececec 100%)",
+        padding: "32px 20px",
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
-        <div
+      <div style={{ maxWidth: "1180px", margin: "0 auto" }}>
+        <section
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "16px",
-            flexWrap: "wrap",
-            marginBottom: "10px",
+            background: "#ffffff",
+            borderRadius: "24px",
+            padding: "28px",
+            boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
+            marginBottom: "22px",
+            border: "1px solid rgba(0,0,0,0.04)",
           }}
         >
-          <h1 style={{ fontSize: "32px", color: "#111", margin: 0 }}>
-            Mis redenciones
-          </h1>
-
-          <LogoutButton />
-        </div>
-
-        <p style={{ color: "#555", marginBottom: "20px" }}>
-          Aquí puedes consultar el historial de solicitudes de premios que has realizado.
-        </p>
-
-        {asesorNombre && (
           <div
             style={{
-              backgroundColor: "white",
-              borderRadius: "16px",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-              padding: "18px 20px",
-              marginBottom: "20px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "18px",
+              flexWrap: "wrap",
             }}
           >
-            <p style={{ margin: 0, color: "#555" }}>Asesor asignado</p>
-            <p style={{ margin: "6px 0 0 0", color: "#111", fontWeight: "bold", fontSize: "20px" }}>
-              {asesorNombre}
-            </p>
-            <p style={{ margin: "8px 0 0 0", color: "#666", fontSize: "14px" }}>
-              Puedes notificarle a tu asesor sobre el estado de tus redenciones.
-            </p>
-          </div>
-        )}
+            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  width: "84px",
+                  height: "84px",
+                  borderRadius: "18px",
+                  background: "#fff",
+                  border: "1px solid #e5e7eb",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                  boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
+                }}
+              >
+                <img
+                  src="/logo-pysta.png"
+                  alt="Pysta"
+                  style={{
+                    maxWidth: "76px",
+                    maxHeight: "76px",
+                    objectFit: "contain",
+                  }}
+                />
+              </div>
 
-        {mensaje ? (
-          <div style={cardStyle}>
-            <p style={{ color: "#333" }}>{mensaje}</p>
-          </div>
-        ) : grupos.length === 0 ? (
-          <div style={cardStyle}>
-            <p style={{ color: "#333" }}>Aún no has realizado redenciones.</p>
-          </div>
-        ) : (
-          <div
-            style={{
-              backgroundColor: "white",
-              borderRadius: "16px",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1.8fr 1fr 1fr 1fr",
-                backgroundColor: "#111",
-                color: "white",
-                padding: "16px",
-                fontWeight: "bold",
-              }}
-            >
-              <div>Premios solicitados</div>
-              <div>Fecha</div>
-              <div>Puntos usados</div>
-              <div>Estado</div>
+              <div style={{ display: "grid", gap: "8px" }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    width: "fit-content",
+                    padding: "6px 12px",
+                    borderRadius: "999px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    background: "rgba(212, 175, 55, 0.14)",
+                    color: "#7a5b00",
+                    border: "1px solid rgba(212, 175, 55, 0.24)",
+                  }}
+                >
+                  Historial de redenciones
+                </span>
+
+                <h1 style={{ margin: 0, fontSize: "34px", color: "#111" }}>
+                  Mis redenciones
+                </h1>
+
+                <p style={{ margin: 0, color: "#6b7280", fontSize: "15px" }}>
+                  {nombreCliente ? `Cliente: ${nombreCliente}` : "Consulta el estado de tus solicitudes"}
+                </p>
+              </div>
             </div>
 
+            <LogoutButton />
+          </div>
+        </section>
+
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: "16px",
+            marginBottom: "22px",
+          }}
+        >
+          <ResumenCard
+            titulo="Solicitudes"
+            valor={String(grupos.length)}
+            descripcion="Total de solicitudes registradas"
+          />
+          <ResumenCard
+            titulo="Premios solicitados"
+            valor={String(redenciones.length)}
+            descripcion="Total de ítems redimidos"
+          />
+          <ResumenCard
+            titulo="Puntos usados"
+            valor={String(redenciones.reduce((acc, item) => acc + Number(item.points_used || 0), 0))}
+            descripcion="Total de puntos utilizados"
+          />
+          <ResumenCard
+            titulo="Asesor asignado"
+            valor={asesorNombre || "-"}
+            descripcion="Persona de apoyo para seguimiento"
+          />
+        </section>
+
+        {mensaje ? (
+          <section style={messageCardStyle}>
+            {mensaje}
+          </section>
+        ) : grupos.length === 0 ? (
+          <section style={emptyCardStyle}>
+            <h2 style={{ margin: 0, fontSize: "24px", color: "#111" }}>Aún no has realizado redenciones</h2>
+            <p style={{ margin: "10px 0 0 0", color: "#6b7280", lineHeight: 1.6 }}>
+              Cuando redimas premios, aquí podrás consultar el historial y estado de cada solicitud.
+            </p>
+
+            <div style={{ marginTop: "20px" }}>
+              <a href="/dashboard/premios" style={buttonGold}>
+                Ver premios disponibles
+              </a>
+            </div>
+          </section>
+        ) : (
+          <section
+            style={{
+              display: "grid",
+              gap: "16px",
+            }}
+          >
             {grupos.map((grupo) => (
-              <div key={grupo.key} style={rowStyle}>
-                <div>
-                  {resumirPremios(grupo.reward_names).map((texto, index) => (
-                    <div key={`${grupo.key}-${index}`} style={{ marginBottom: "6px" }}>
-                      • {texto}
-                    </div>
-                  ))}
+              <article
+                key={grupo.key}
+                style={{
+                  background: "#fff",
+                  borderRadius: "22px",
+                  padding: "22px",
+                  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
+                  border: "1px solid rgba(0,0,0,0.04)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                    flexWrap: "wrap",
+                    alignItems: "flex-start",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <div>
+                    <p style={{ margin: 0, color: "#6b7280", fontSize: "13px", fontWeight: 700 }}>
+                      SOLICITUD
+                    </p>
+                    <h3 style={{ margin: "6px 0 0 0", fontSize: "24px", color: "#111" }}>
+                      {grupo.date_label}
+                    </h3>
+                  </div>
+
+                  <span
+                    style={{
+                      ...estadoStyles(grupo.status),
+                      padding: "8px 12px",
+                      borderRadius: "999px",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {traducirEstado(grupo.status)}
+                  </span>
                 </div>
 
-                <div>{grupo.date_label}</div>
-                <div>{grupo.points_total}</div>
-                <div>{traducirEstado(grupo.status)}</div>
-              </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "14px",
+                  }}
+                >
+                  <InfoItem
+                    label="Premios solicitados"
+                    value={resumirPremios(grupo.reward_names).join(" · ")}
+                  />
+                  <InfoItem
+                    label="Puntos usados"
+                    value={String(grupo.points_total)}
+                  />
+                  <InfoItem
+                    label="Estado actual"
+                    value={traducirEstado(grupo.status)}
+                  />
+                </div>
+              </article>
             ))}
-          </div>
+          </section>
         )}
 
-        <div style={{ marginTop: "30px" }}>
-          <a href="/dashboard" style={buttonBack}>
+        <div style={{ marginTop: "28px", display: "flex", gap: "14px", flexWrap: "wrap" }}>
+          <a href="/dashboard/premios" style={buttonGold}>
+            Ver premios
+          </a>
+
+          <a href="/dashboard" style={buttonDark}>
             Volver al panel
           </a>
         </div>
@@ -308,28 +451,85 @@ export default function RedencionesPage() {
   )
 }
 
-const cardStyle = {
-  backgroundColor: "white",
-  borderRadius: "16px",
-  boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
-  padding: "24px",
+function ResumenCard({
+  titulo,
+  valor,
+  descripcion,
+}: {
+  titulo: string
+  valor: string
+  descripcion: string
+}) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        borderRadius: "22px",
+        padding: "22px",
+        boxShadow: "0 10px 28px rgba(0,0,0,0.07)",
+        border: "1px solid rgba(0,0,0,0.04)",
+      }}
+    >
+      <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
+      <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
+      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
+    </div>
+  )
 }
 
-const rowStyle = {
-  display: "grid",
-  gridTemplateColumns: "1.8fr 1fr 1fr 1fr",
-  padding: "16px",
-  borderBottom: "1px solid #eee",
-  color: "#333",
-  alignItems: "start",
-  gap: "12px",
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        background: "#f9fafb",
+        border: "1px solid #e5e7eb",
+        borderRadius: "16px",
+        padding: "14px 16px",
+      }}
+    >
+      <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
+        {label}
+      </p>
+      <p style={{ margin: 0, fontSize: "16px", color: "#111", lineHeight: 1.5 }}>
+        {value}
+      </p>
+    </div>
+  )
 }
 
-const buttonBack = {
+const messageCardStyle = {
+  background: "#fff",
+  borderRadius: "22px",
+  padding: "22px",
+  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
+  border: "1px solid rgba(0,0,0,0.04)",
+  color: "#111",
+}
+
+const emptyCardStyle = {
+  background: "#fff",
+  borderRadius: "22px",
+  padding: "28px",
+  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
+  border: "1px solid rgba(0,0,0,0.04)",
+}
+
+const buttonDark = {
   backgroundColor: "#111",
   color: "white",
   textDecoration: "none",
   padding: "14px 24px",
-  borderRadius: "10px",
+  borderRadius: "14px",
   display: "inline-block",
+  fontWeight: "bold" as const,
+}
+
+const buttonGold = {
+  backgroundColor: "#d4af37",
+  color: "#111",
+  textDecoration: "none",
+  padding: "14px 24px",
+  borderRadius: "14px",
+  display: "inline-block",
+  fontWeight: "bold" as const,
 }
