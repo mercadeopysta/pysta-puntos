@@ -250,6 +250,7 @@ export default function NuevaFacturaPage() {
           justifyContent: "center",
           fontFamily: "Arial, sans-serif",
           background: "#f5f5f5",
+          padding: "20px",
         }}
       >
         Validando acceso...
@@ -266,7 +267,7 @@ export default function NuevaFacturaPage() {
       style={{
         minHeight: "100vh",
         background: "linear-gradient(180deg, #f5f5f5 0%, #ececec 100%)",
-        padding: "32px 20px",
+        padding: "20px 14px",
         fontFamily: "Arial, sans-serif",
       }}
     >
@@ -275,7 +276,7 @@ export default function NuevaFacturaPage() {
           style={{
             background: "#ffffff",
             borderRadius: "24px",
-            padding: "28px",
+            padding: "24px",
             boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
             marginBottom: "22px",
             border: "1px solid rgba(0,0,0,0.04)",
@@ -303,6 +304,7 @@ export default function NuevaFacturaPage() {
                   justifyContent: "center",
                   overflow: "hidden",
                   boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
+                  flexShrink: 0,
                 }}
               >
                 <img
@@ -333,7 +335,7 @@ export default function NuevaFacturaPage() {
                   Registro de facturas
                 </span>
 
-                <h1 style={{ margin: 0, fontSize: "34px", color: "#111" }}>
+                <h1 style={{ margin: 0, fontSize: "32px", color: "#111", lineHeight: 1.1 }}>
                   Registrar factura
                 </h1>
 
@@ -347,20 +349,15 @@ export default function NuevaFacturaPage() {
           </div>
         </section>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, 0.85fr)",
-            gap: "22px",
-          }}
-        >
+        <div className="factura-layout">
           <section
             style={{
               background: "#fff",
               borderRadius: "24px",
-              padding: "28px",
+              padding: "24px",
               boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
               border: "1px solid rgba(0,0,0,0.04)",
+              minWidth: 0,
             }}
           >
             <div style={{ marginBottom: "22px" }}>
@@ -370,13 +367,7 @@ export default function NuevaFacturaPage() {
               </p>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: "16px",
-              }}
-            >
+            <div className="factura-form-grid">
               <Field label="Número de factura">
                 <input
                   className="campo-pysta"
@@ -406,12 +397,10 @@ export default function NuevaFacturaPage() {
                   value={amountWithoutVat}
                   onChange={(e) => handleAmountChange(e.target.value)}
                 />
-                <p style={helperText}>
-                  Vista en pesos: {valorFormateado}
-                </p>
+                <p style={helperText}>Vista en pesos: {valorFormateado}</p>
               </div>
 
-              <div style={{ gridColumn: "1 / -1" }}>
+              <div className="full-width">
                 <label style={labelStyle}>Adjuntar foto o PDF de la factura *</label>
 
                 <div
@@ -445,6 +434,7 @@ export default function NuevaFacturaPage() {
                         color: "#111",
                         fontSize: "14px",
                         fontWeight: 700,
+                        wordBreak: "break-word",
                       }}
                     >
                       Archivo seleccionado: {file.name}
@@ -453,7 +443,7 @@ export default function NuevaFacturaPage() {
                 </div>
               </div>
 
-              <div style={{ gridColumn: "1 / -1" }}>
+              <div className="full-width">
                 <Field label="Observaciones">
                   <textarea
                     className="campo-pysta"
@@ -500,11 +490,12 @@ export default function NuevaFacturaPage() {
               background: "linear-gradient(135deg, #111111 0%, #1f1f1f 100%)",
               color: "white",
               borderRadius: "24px",
-              padding: "28px",
+              padding: "24px",
               boxShadow: "0 14px 40px rgba(0,0,0,0.12)",
               display: "grid",
               alignContent: "start",
               gap: "16px",
+              minWidth: 0,
             }}
           >
             <span
@@ -538,6 +529,22 @@ export default function NuevaFacturaPage() {
       </div>
 
       <style>{`
+        .factura-layout {
+          display: grid;
+          grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+          gap: 22px;
+        }
+
+        .factura-form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+        }
+
+        .full-width {
+          grid-column: 1 / -1;
+        }
+
         .campo-pysta {
           width: 100%;
           padding: 15px 16px;
@@ -549,6 +556,7 @@ export default function NuevaFacturaPage() {
           box-sizing: border-box;
           outline: none;
           transition: border-color 0.2s ease, box-shadow 0.2s ease;
+          min-width: 0;
         }
 
         .campo-pysta:focus {
@@ -558,6 +566,18 @@ export default function NuevaFacturaPage() {
 
         .campo-pysta::placeholder {
           color: #8a8a8a;
+        }
+
+        @media (max-width: 900px) {
+          .factura-layout {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .factura-form-grid {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
     </main>
@@ -584,6 +604,7 @@ function TipCard({ texto }: { texto: string }) {
         color: "rgba(255,255,255,0.88)",
         fontSize: "14px",
         lineHeight: 1.5,
+        wordBreak: "break-word",
       }}
     >
       {texto}
