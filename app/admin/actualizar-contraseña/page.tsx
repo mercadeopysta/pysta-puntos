@@ -2,22 +2,18 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { supabase } from "../../lib/supabase"
 
-export default function LoginPage() {
-  const router = useRouter()
-
+export default function OlvideMiContrasenaPage() {
   const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
   const [mensaje, setMensaje] = useState("")
   const [cargando, setCargando] = useState(false)
 
-  const handleLogin = async () => {
+  const handleRecuperar = async () => {
     setMensaje("")
 
-    if (!email.trim() || !password.trim()) {
-      setMensaje("Ingresa tu correo y contraseña.")
+    if (!email.trim()) {
+      setMensaje("Ingresa tu correo electrónico.")
       return
     }
 
@@ -26,59 +22,25 @@ export default function LoginPage() {
 
       const correo = email.trim().toLowerCase()
 
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: correo,
-        password,
+      const redirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/actualizar-contrasena`
+          : undefined
+
+      const { error } = await supabase.auth.resetPasswordForEmail(correo, {
+        redirectTo,
       })
 
-      if (authError) {
-        setMensaje("Correo o contraseña incorrectos.")
+      if (error) {
+        setMensaje("Ocurrió un error al enviar el correo de recuperación: " + error.message)
         setCargando(false)
         return
       }
 
-      const user = authData.user
-
-      if (!user) {
-        setMensaje("No se pudo iniciar sesión correctamente.")
-        setCargando(false)
-        return
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, email, full_name, client_type, is_active, is_approved")
-        .eq("id", user.id)
-        .maybeSingle()
-
-      if (profileError || !profile) {
-        await supabase.auth.signOut()
-        setMensaje("No se encontró el perfil del cliente.")
-        setCargando(false)
-        return
-      }
-
-      if (!profile.is_active) {
-        await supabase.auth.signOut()
-        setMensaje("Tu cuenta está inactiva. Comunícate con el administrador.")
-        setCargando(false)
-        return
-      }
-
-      if (!profile.is_approved) {
-        await supabase.auth.signOut()
-        setMensaje("Tu cuenta fue creada correctamente, pero aún está pendiente de aprobación por el administrador.")
-        setCargando(false)
-        return
-      }
-
-      localStorage.setItem("cliente_email", profile.email)
-      localStorage.setItem("cliente_name", profile.full_name || "")
-      localStorage.setItem("cliente_tipo", profile.client_type || "")
-
-      router.push("/dashboard")
+      setMensaje("Si el correo existe, te enviamos un enlace para restablecer tu contraseña.")
+      setEmail("")
     } catch {
-      setMensaje("Ocurrió un error inesperado al iniciar sesión.")
+      setMensaje("Ocurrió un error inesperado al enviar la recuperación.")
     } finally {
       setCargando(false)
     }
@@ -120,15 +82,15 @@ export default function LoginPage() {
               border: "1px solid rgba(212, 175, 55, 0.24)",
             }}
           >
-            Acceso cliente
+            Recuperar acceso
           </span>
 
           <h1 style={{ margin: 0, fontSize: "32px", color: "#111" }}>
-            Iniciar sesión
+            Recuperar contraseña
           </h1>
 
           <p style={{ margin: 0, color: "#6b7280", lineHeight: 1.5 }}>
-            Ingresa con tu correo y contraseña para acceder a tus puntos y premios.
+            Escribe tu correo y te enviaremos un enlace para crear una nueva contraseña.
           </p>
         </div>
 
@@ -141,16 +103,8 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
           />
 
-          <input
-            className="campo-pysta"
-            type="password"
-            placeholder="Contraseña"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-
           <button
-            onClick={handleLogin}
+            onClick={handleRecuperar}
             disabled={cargando}
             style={{
               background: "#111",
@@ -163,11 +117,11 @@ export default function LoginPage() {
               fontSize: "16px",
             }}
           >
-            {cargando ? "Ingresando..." : "Ingresar"}
+            {cargando ? "Enviando..." : "Enviar enlace"}
           </button>
 
           <Link
-            href="/olvide-mi-contrasena"
+            href="/login"
             style={{
               textAlign: "center",
               color: "#111",
@@ -175,19 +129,7 @@ export default function LoginPage() {
               fontWeight: 700,
             }}
           >
-            Olvidé mi contraseña
-          </Link>
-
-          <Link
-            href="/registro"
-            style={{
-              textAlign: "center",
-              color: "#111",
-              textDecoration: "none",
-              fontWeight: 700,
-            }}
-          >
-            Crear cuenta
+            Volver al login
           </Link>
         </div>
 
@@ -195,9 +137,9 @@ export default function LoginPage() {
           <div
             style={{
               marginTop: "18px",
-              background: "#fff7ed",
-              border: "1px solid #fed7aa",
-              color: "#9a3412",
+              background: "#eff6ff",
+              border: "1px solid #bfdbfe",
+              color: "#1d4ed8",
               borderRadius: "14px",
               padding: "14px 16px",
             }}
