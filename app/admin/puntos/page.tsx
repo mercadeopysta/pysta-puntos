@@ -203,6 +203,58 @@ export default function AdminPuntosPage() {
     })
   }, [clientesPuntos, filtroBusqueda, filtroTipo])
 
+  const exportarCSV = () => {
+    if (clientesFiltrados.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("No hay datos para exportar con los filtros actuales.")
+      return
+    }
+
+    const filas = clientesFiltrados.map((cliente, index) => ({
+      Posicion: index + 1,
+      Nombre: cliente.full_name,
+      Documento: cliente.document_number || "",
+      Correo: cliente.email,
+      TipoCliente: cliente.client_type || "",
+      Asesor: cliente.advisor_name || "",
+      FacturasAprobadas: cliente.invoices_count,
+      CompraAcumulada: cliente.total_purchase,
+      PuntosAcumulados: cliente.total_points_accumulated,
+    }))
+
+    const encabezados = Object.keys(filas[0])
+
+    const escaparCSV = (valor: string | number) => {
+      const texto = String(valor ?? "")
+      if (texto.includes(",") || texto.includes('"') || texto.includes("\n")) {
+        return `"${texto.replace(/"/g, '""')}"`
+      }
+      return texto
+    }
+
+    const contenido = [
+      encabezados.join(","),
+      ...filas.map((fila) =>
+        encabezados.map((encabezado) => escaparCSV(fila[encabezado as keyof typeof fila])).join(",")
+      ),
+    ].join("\n")
+
+    const blob = new Blob(["\uFEFF" + contenido], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    const hoy = new Date().toISOString().slice(0, 10)
+
+    link.href = url
+    link.setAttribute("download", `ranking-puntos-${hoy}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    setTipoMensaje("success")
+    setMensaje("CSV exportado correctamente.")
+  }
+
   const topCliente = clientesFiltrados.length > 0 ? clientesFiltrados[0] : null
 
   const topMayorista =
@@ -352,17 +404,26 @@ export default function AdminPuntosPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => {
-              setFiltroBusqueda("")
-              setFiltroTipo("")
-              setFechaDesde("")
-              setFechaHasta("")
-            }}
-            className="pysta-btn pysta-btn-light"
-          >
-            Limpiar filtros
-          </button>
+          <div className="pysta-actions">
+            <button
+              onClick={() => {
+                setFiltroBusqueda("")
+                setFiltroTipo("")
+                setFechaDesde("")
+                setFechaHasta("")
+              }}
+              className="pysta-btn pysta-btn-light"
+            >
+              Limpiar filtros
+            </button>
+
+            <button
+              onClick={exportarCSV}
+              className="pysta-btn pysta-btn-dark"
+            >
+              Exportar CSV
+            </button>
+          </div>
         </section>
 
         {mensaje && (
