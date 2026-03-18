@@ -19,7 +19,7 @@ export default function RegistroPage() {
   const [advisorName, setAdvisorName] = useState("")
   const [documentType, setDocumentType] = useState("")
   const [documentNumber, setDocumentNumber] = useState("")
-  const [whatsapp, setWhatsapp] = useState("")
+  const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -54,7 +54,7 @@ export default function RegistroPage() {
     setAdvisorName("")
     setDocumentType("")
     setDocumentNumber("")
-    setWhatsapp("")
+    setPhone("")
     setEmail("")
     setPassword("")
     setConfirmPassword("")
@@ -128,7 +128,7 @@ export default function RegistroPage() {
           advisor_name: advisorName,
           document_type: documentType,
           document_number: documentNumber,
-          whatsapp,
+          phone: phone,
           email: correo,
           is_active: true,
           is_approved: false,
@@ -302,6 +302,7 @@ export default function RegistroPage() {
                 <option value="">Selecciona tipo</option>
                 <option value="Mayorista">Mayorista</option>
                 <option value="Distribuidor">Distribuidor</option>
+                <option value="Ambos">Ambos</option>
               </select>
             </Field>
 
@@ -336,8 +337,8 @@ export default function RegistroPage() {
               <input className="campo-pysta" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} />
             </Field>
 
-            <Field label="WhatsApp">
-              <input className="campo-pysta" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
+            <Field label="Teléfono / WhatsApp">
+              <input className="campo-pysta" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </Field>
 
             <Field label="Correo electrónico">

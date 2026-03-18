@@ -80,38 +80,21 @@ export default function AdminClientesPage() {
     setCargando(true)
     setMensaje("")
 
-    const intentoCompleto = await supabase
+    const { data, error } = await supabase
       .from("profiles")
       .select("id, full_name, email, document_number, phone, client_type, advisor_name, is_active, is_approved, created_at")
       .order("created_at", { ascending: false })
 
-    if (!intentoCompleto.error) {
-      const rows = ((intentoCompleto.data as Record<string, unknown>[]) || []).map(normalizarCliente)
-      setClientes(rows)
-      setCargando(false)
-      return
-    }
-
-    console.error("Error cargando clientes con select completo:", intentoCompleto.error)
-
-    const intentoBasico = await supabase
-      .from("profiles")
-      .select("id, full_name, email, is_active, is_approved, created_at")
-      .order("created_at", { ascending: false })
-
-    if (intentoBasico.error) {
-      console.error("Error cargando clientes con select básico:", intentoBasico.error)
+    if (error) {
+      console.error("Error cargando clientes:", error)
       setTipoMensaje("error")
-      setMensaje("Ocurrió un error al cargar los clientes: " + intentoBasico.error.message)
+      setMensaje("Ocurrió un error al cargar los clientes: " + error.message)
       setCargando(false)
       return
     }
 
-    const rows = ((intentoBasico.data as Record<string, unknown>[]) || []).map(normalizarCliente)
+    const rows = ((data as Record<string, unknown>[]) || []).map(normalizarCliente)
     setClientes(rows)
-
-    setTipoMensaje("warning")
-    setMensaje("Los clientes cargaron en modo básico. Algunas columnas adicionales no existen todavía en profiles.")
     setCargando(false)
   }
 
@@ -227,14 +210,10 @@ export default function AdminClientesPage() {
     setMensaje("")
     setGuardandoEdicion(true)
 
-    const payloadBase = {
-      full_name: editNombre,
-    }
-
-    const intentoCompleto = await supabase
+    const { error } = await supabase
       .from("profiles")
       .update({
-        ...payloadBase,
+        full_name: editNombre,
         document_number: editDocumento,
         phone: editTelefono,
         client_type: editTipoCliente,
@@ -242,31 +221,15 @@ export default function AdminClientesPage() {
       })
       .eq("id", editandoId)
 
-    if (!intentoCompleto.error) {
-      setTipoMensaje("success")
-      setMensaje("Cliente actualizado correctamente.")
-      setGuardandoEdicion(false)
-      cancelarEdicion()
-      cargarClientes()
-      return
-    }
-
-    console.error("Error guardando edición completa:", intentoCompleto.error)
-
-    const intentoBasico = await supabase
-      .from("profiles")
-      .update(payloadBase)
-      .eq("id", editandoId)
-
-    if (intentoBasico.error) {
+    if (error) {
       setTipoMensaje("error")
-      setMensaje("No se pudo guardar la edición: " + intentoBasico.error.message)
+      setMensaje("No se pudo guardar la edición: " + error.message)
       setGuardandoEdicion(false)
       return
     }
 
-    setTipoMensaje("warning")
-    setMensaje("Se actualizó el nombre, pero algunas columnas adicionales no existen todavía en profiles.")
+    setTipoMensaje("success")
+    setMensaje("Cliente actualizado correctamente.")
     setGuardandoEdicion(false)
     cancelarEdicion()
     cargarClientes()

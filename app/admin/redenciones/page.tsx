@@ -12,10 +12,10 @@ type Redencion = {
   id: string
   user_email: string
   reward_id: string | null
-  reward_name: string
-  points_used: number
-  status: string
-  created_at: string
+  reward_name: string | null
+  points_used: number | null
+  status: string | null
+  created_at: string | null
   redemption_group_id: string | null
 }
 
@@ -91,43 +91,69 @@ export default function AdminRedencionesPage() {
     setCargando(true)
     setMensaje("")
 
-    const { data: redencionesData, error: redencionesError } = await supabase
-      .from("redemptions")
-      .select("id, user_email, reward_id, reward_name, points_used, status, created_at, redemption_group_id")
-      .order("created_at", { ascending: false })
+    try {
+      const { data: redencionesData, error: redencionesError } = await supabase
+        .from("redemptions")
+        .select("id, user_email, reward_id, reward_name, points_used, status, created_at, redemption_group_id")
+        .order("created_at", { ascending: false })
 
-    if (redencionesError) {
-      setTipoMensaje("error")
-      setMensaje("Ocurrió un error al cargar las redenciones.")
-      setCargando(false)
-      return
-    }
+      if (redencionesError) {
+        setTipoMensaje("error")
+        setMensaje("Ocurrió un error al cargar las redenciones: " + redencionesError.message)
+        setCargando(false)
+        return
+      }
 
-    const redencionesRows = (redencionesData as Redencion[]) || []
-    setRedenciones(redencionesRows)
+      const redencionesRows = ((redencionesData as Redencion[]) || []).map((r) => ({
+        id: String(r.id || ""),
+        user_email: String(r.user_email || ""),
+        reward_id: r.reward_id || null,
+        reward_name: r.reward_name || "",
+        points_used: Number(r.points_used || 0),
+        status: String(r.status || "requested"),
+        created_at: r.created_at || new Date().toISOString(),
+        redemption_group_id: r.redemption_group_id || null,
+      }))
 
-    const correos = Array.from(new Set(redencionesRows.map((r) => r.user_email).filter(Boolean)))
+      setRedenciones(redencionesRows)
 
-    if (correos.length > 0) {
-      const { data: perfilesData } = await supabase
-        .from("profiles")
-        .select("email, full_name, document_number, advisor_name")
-        .in("email", correos)
+      const correos = Array.from(new Set(redencionesRows.map((r) => r.user_email).filter(Boolean)))
 
-      const mapa: Record<string, ProfileRow> = {}
+      if (correos.length > 0) {
+        const { data: perfilesData, error: perfilesError } = await supabase
+          .from("profiles")
+          .select("email, full_name, document_number, advisor_name")
+          .in("email", correos)
 
-      ;((perfilesData as ProfileRow[]) || []).forEach((perfil) => {
-        if (perfil.email) {
-          mapa[perfil.email] = perfil
+        if (perfilesError) {
+          console.error("Error cargando perfiles para redenciones:", perfilesError)
+          setProfilesMap({})
+        } else {
+          const mapa: Record<string, ProfileRow> = {}
+
+          ;((perfilesData as ProfileRow[]) || []).forEach((perfil) => {
+            if (perfil?.email) {
+              mapa[perfil.email] = {
+                email: perfil.email,
+                full_name: perfil.full_name || "",
+                document_number: perfil.document_number || "",
+                advisor_name: perfil.advisor_name || "",
+              }
+            }
+          })
+
+          setProfilesMap(mapa)
         }
-      })
-
-      setProfilesMap(mapa)
-    } else {
-      setProfilesMap({})
+      } else {
+        setProfilesMap({})
+      }
+    } catch (error) {
+      console.error("Error inesperado cargando redenciones:", error)
+      setTipoMensaje("error")
+      setMensaje("Ocurrió un error inesperado al cargar redenciones.")
+    } finally {
+      setCargando(false)
     }
-
-    setCargando(false)
   }
 
   useEffect(() => {
@@ -143,7 +169,7 @@ export default function AdminRedencionesPage() {
     if (status === "delivered") return "Entregada"
     if (status === "cancelled") return "Cancelada"
     if (status === "mixed") return "Mixto"
-    return status
+    return status || "Sin estado"
   }
 
   const descripcionEstado = (status: string) => {
@@ -160,7 +186,7 @@ export default function AdminRedencionesPage() {
     const grouped = new Map<string, GrupoRedencion>()
 
     redenciones.forEach((redencion) => {
-      const fecha = new Date(redencion.created_at)
+      const fecha = new Date(redencion.created_at || new Date().toISOString())
       const dateKey = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}-${String(
         fecha.getDate()
       ).padStart(2, "0")}`
@@ -168,18 +194,18 @@ export default function AdminRedencionesPage() {
       const groupId =
         redencion.redemption_group_id && redencion.redemption_group_id.trim() !== ""
           ? redencion.redemption_group_id
-          : `${redencion.user_email}__${dateKey}__legacy`
+          : `${redencion.user_email || "sin-email"}__${dateKey}__legacy`
 
-      const perfil = profilesMap[redencion.user_email]
+      const perfil = profilesMap[redencion.user_email || ""]
 
       if (!grouped.has(groupId)) {
         grouped.set(groupId, {
           key: groupId,
           group_id: groupId,
-          user_email: redencion.user_email,
-          created_at: redencion.created_at,
+          user_email: redencion.user_email || "",
+          created_at: redencion.created_at || new Date().toISOString(),
           date_label: fecha.toLocaleDateString("es-CO"),
-          status: redencion.status,
+          status: redencion.status || "requested",
           items: [],
           points_total: 0,
           customer_name: perfil?.full_name || "",
@@ -188,17 +214,21 @@ export default function AdminRedencionesPage() {
         })
       }
 
-      const current = grouped.get(groupId)!
+      const current = grouped.get(groupId)
+
+      if (!current) return
+
       current.items.push({
         id: redencion.id,
-        reward_id: redencion.reward_id,
-        reward_name: redencion.reward_name,
+        reward_id: redencion.reward_id || null,
+        reward_name: redencion.reward_name || "Premio sin nombre",
         points_used: Number(redencion.points_used || 0),
-        status: redencion.status,
+        status: redencion.status || "requested",
       })
+
       current.points_total += Number(redencion.points_used || 0)
 
-      if (current.status !== redencion.status) {
+      if (current.status !== (redencion.status || "requested")) {
         current.status = "mixed"
       }
     })
@@ -206,22 +236,34 @@ export default function AdminRedencionesPage() {
     return Array.from(grouped.values()).sort((a, b) => b.created_at.localeCompare(a.created_at))
   }, [redenciones, profilesMap])
 
+  const resumirPremios = (items: GrupoItem[]) => {
+    const conteo: Record<string, number> = {}
+
+    items.forEach((item) => {
+      const nombre = item.reward_name || "Premio sin nombre"
+      conteo[nombre] = (conteo[nombre] || 0) + 1
+    })
+
+    return Object.entries(conteo).map(([nombre, cantidad]) => `${cantidad} x ${nombre}`)
+  }
+
   const gruposFiltrados = useMemo(() => {
     const texto = filtroTexto.trim().toLowerCase()
     const estado = filtroEstado.trim().toLowerCase()
 
     return grupos.filter((grupo) => {
-      const premiosTexto = resumirPremios(grupo.items).join(" ").toLowerCase()
+      const premiosTexto = resumirPremios(grupo.items || []).join(" ").toLowerCase()
+
       const coincideTexto =
         !texto ||
-        grupo.group_id.toLowerCase().includes(texto) ||
-        grupo.user_email.toLowerCase().includes(texto) ||
+        (grupo.group_id || "").toLowerCase().includes(texto) ||
+        (grupo.user_email || "").toLowerCase().includes(texto) ||
         (grupo.customer_name || "").toLowerCase().includes(texto) ||
         (grupo.document_number || "").toLowerCase().includes(texto) ||
         (grupo.advisor_name || "").toLowerCase().includes(texto) ||
         premiosTexto.includes(texto)
 
-      const coincideEstado = !estado || grupo.status.toLowerCase() === estado
+      const coincideEstado = !estado || (grupo.status || "").toLowerCase() === estado
 
       return coincideTexto && coincideEstado
     })
@@ -230,7 +272,7 @@ export default function AdminRedencionesPage() {
   const totalSolicitudes = grupos.length
   const totalItems = redenciones.length
   const totalPendientes = grupos.filter((g) => g.status === "requested").length
-  const totalPuntos = grupos.reduce((acc, grupo) => acc + grupo.points_total, 0)
+  const totalPuntos = grupos.reduce((acc, grupo) => acc + Number(grupo.points_total || 0), 0)
 
   const idsVisibles = gruposFiltrados.map((g) => g.group_id)
   const todosVisiblesSeleccionados =
@@ -249,16 +291,6 @@ export default function AdminRedencionesPage() {
     }
 
     setSeleccionados((prev) => Array.from(new Set([...prev, ...idsVisibles])))
-  }
-
-  const resumirPremios = (items: GrupoItem[]) => {
-    const conteo: Record<string, number> = {}
-
-    items.forEach((item) => {
-      conteo[item.reward_name] = (conteo[item.reward_name] || 0) + 1
-    })
-
-    return Object.entries(conteo).map(([nombre, cantidad]) => `${cantidad} x ${nombre}`)
   }
 
   const estadoStyles = (estado: string) => {
@@ -293,10 +325,19 @@ export default function AdminRedencionesPage() {
     }
   }
 
-  const actualizarGrupoEstado = async (grupo: GrupoRedencion, nuevoEstado: "approved" | "shipped" | "delivered") => {
+  const actualizarGrupoEstado = async (
+    grupo: GrupoRedencion,
+    nuevoEstado: "approved" | "shipped" | "delivered"
+  ) => {
     setMensaje("")
 
-    const ids = grupo.items.map((item) => item.id)
+    const ids = (grupo.items || []).map((item) => item.id).filter(Boolean)
+
+    if (ids.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("La solicitud no tiene ítems válidos para actualizar.")
+      return
+    }
 
     const { error } = await supabase
       .from("redemptions")
@@ -317,9 +358,15 @@ export default function AdminRedencionesPage() {
   const cancelarGrupoYDevolverStock = async (grupo: GrupoRedencion) => {
     setMensaje("")
 
-    const ids = grupo.items.map((item) => item.id)
+    const ids = (grupo.items || []).map((item) => item.id).filter(Boolean)
 
-    for (const item of grupo.items) {
+    if (ids.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("La solicitud no tiene ítems válidos para cancelar.")
+      return
+    }
+
+    for (const item of grupo.items || []) {
       if (!item.reward_id) continue
 
       const { data: rewardData } = await supabase
@@ -375,7 +422,14 @@ export default function AdminRedencionesPage() {
     setEliminandoGrupo(true)
     setMensaje("")
 
-    const ids = grupoAEliminar.items.map((item) => item.id)
+    const ids = (grupoAEliminar.items || []).map((item) => item.id).filter(Boolean)
+
+    if (ids.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("La solicitud no tiene ítems válidos para eliminar.")
+      setEliminandoGrupo(false)
+      return
+    }
 
     const { error } = await supabase
       .from("redemptions")
@@ -433,7 +487,7 @@ export default function AdminRedencionesPage() {
 
     if (bulkAction === "cancelled") {
       for (const grupo of gruposSeleccionados) {
-        for (const item of grupo.items) {
+        for (const item of grupo.items || []) {
           if (!item.reward_id) continue
 
           const { data: rewardData } = await supabase
@@ -459,7 +513,14 @@ export default function AdminRedencionesPage() {
       }
     }
 
-    const ids = gruposSeleccionados.flatMap((grupo) => grupo.items.map((item) => item.id))
+    const ids = gruposSeleccionados.flatMap((grupo) => (grupo.items || []).map((item) => item.id)).filter(Boolean)
+
+    if (ids.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("No hay ítems válidos para la acción masiva.")
+      setEjecutandoMasivo(false)
+      return
+    }
 
     const { error } = await supabase
       .from("redemptions")
@@ -496,9 +557,9 @@ export default function AdminRedencionesPage() {
       cliente: grupo.customer_name || "",
       documento: grupo.document_number || "",
       asesor: grupo.advisor_name || "",
-      cantidad_items: String(grupo.items.length),
-      premios: resumirPremios(grupo.items).join(" | "),
-      puntos_usados: String(grupo.points_total),
+      cantidad_items: String((grupo.items || []).length),
+      premios: resumirPremios(grupo.items || []).join(" | "),
+      puntos_usados: String(grupo.points_total || 0),
       estado: traducirEstado(grupo.status),
     }))
 
@@ -843,12 +904,12 @@ export default function AdminRedencionesPage() {
                           }}
                         >
                           <InfoItem label="Solicitud ID" value={grupo.group_id} />
-                          <InfoItem label="Ítems en la solicitud" value={String(grupo.items.length)} />
-                          <InfoItem label="Correo" value={grupo.user_email} />
+                          <InfoItem label="Ítems en la solicitud" value={String((grupo.items || []).length)} />
+                          <InfoItem label="Correo" value={grupo.user_email || "-"} />
                           <InfoItem label="Cliente" value={grupo.customer_name || "-"} />
                           <InfoItem label="Documento" value={grupo.document_number || "-"} />
                           <InfoItem label="Asesor" value={grupo.advisor_name || "-"} />
-                          <InfoItem label="Puntos usados" value={String(grupo.points_total)} />
+                          <InfoItem label="Puntos usados" value={String(grupo.points_total || 0)} />
                           <InfoItem label="Estado actual" value={traducirEstado(grupo.status)} />
                           <InfoItem label="Detalle" value={descripcionEstado(grupo.status)} />
                         </div>
@@ -867,7 +928,7 @@ export default function AdminRedencionesPage() {
                           </p>
 
                           <div style={{ display: "grid", gap: "6px" }}>
-                            {resumirPremios(grupo.items).map((texto, index) => (
+                            {resumirPremios(grupo.items || []).map((texto, index) => (
                               <p key={`${grupo.key}-${index}`} style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>
                                 • {texto}
                               </p>

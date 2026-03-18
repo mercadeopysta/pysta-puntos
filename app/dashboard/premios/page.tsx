@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { supabase } from "../../../lib/supabase"
 import LogoutButton from "../../../components/LogoutButton"
 import InfoPopup from "../../../components/InfoPopup"
+import ConfirmModal from "../../../components/ConfirmModal"
 
 type FacturaSaldo = {
   amount_without_vat: number
@@ -45,6 +46,10 @@ export default function PremiosPage() {
   const [itemsRedimidosMes, setItemsRedimidosMes] = useState(0)
   const [itemsPorPremioMes, setItemsPorPremioMes] = useState<Record<string, number>>({})
   const [procesandoPremioId, setProcesandoPremioId] = useState("")
+
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [premioPendiente, setPremioPendiente] = useState<Premio | null>(null)
+  const [cantidadPendiente, setCantidadPendiente] = useState(0)
 
   const itemsDisponiblesMes = Math.max(limiteMensual - itemsRedimidosMes, 0)
 
@@ -300,56 +305,82 @@ export default function PremiosPage() {
     return `${textoBase} Se creó una nueva solicitud.`
   }
 
-  const handleRedimir = async (premio: Premio) => {
-    setMensaje("")
-
+  const validarRedencion = (premio: Premio, cantidad: number) => {
     const emailGuardado = localStorage.getItem("cliente_email")
-    const cantidadTexto = cantidades[premio.id]
-    const cantidad = Number(cantidadTexto === "" ? 0 : cantidadTexto || "1")
     const puntosNecesarios = premio.points_required * cantidad
     const yaRedimidosDeEsePremio = Number(itemsPorPremioMes[premio.id] || 0)
 
     if (!emailGuardado) {
-      setMensaje("No se encontró el usuario logueado.")
-      return
+      return "No se encontró el usuario logueado."
     }
 
     if (premio.stock <= 0) {
-      setMensaje("Este premio ya está agotado.")
-      return
+      return "Este premio ya está agotado."
     }
 
-    if (!cantidadTexto || cantidad < 1) {
-      setMensaje("Debes ingresar una cantidad válida.")
-      return
+    if (cantidad < 1) {
+      return "Debes ingresar una cantidad válida."
     }
 
     if (cantidad > premio.stock) {
-      setMensaje(`Solo hay ${premio.stock} unidades disponibles de este premio.`)
-      return
+      return `Solo hay ${premio.stock} unidades disponibles de este premio.`
     }
 
     if (puntosDisponibles < puntosNecesarios) {
-      setMensaje("No tienes puntos suficientes para esa cantidad.")
-      return
+      return "No tienes puntos suficientes para esa cantidad."
     }
 
     if (itemsRedimidosMes + cantidad > limiteMensual) {
-      setMensaje(
-        `Con esa cantidad superarías el límite mensual de ${limiteMensual} ítems. Ya llevas ${itemsRedimidosMes}.`
-      )
-      return
+      return `Con esa cantidad superarías el límite mensual de ${limiteMensual} ítems. Ya llevas ${itemsRedimidosMes}.`
     }
 
     const limitePremio = Number(premio.max_monthly_per_user || 0)
 
     if (limitePremio > 0 && yaRedimidosDeEsePremio + cantidad > limitePremio) {
-      setMensaje(
-        `Solo puedes redimir máximo ${limitePremio} unidades de este premio por mes. Ya llevas ${yaRedimidosDeEsePremio}.`
-      )
+      return `Solo puedes redimir máximo ${limitePremio} unidades de este premio por mes. Ya llevas ${yaRedimidosDeEsePremio}.`
+    }
+
+    return ""
+  }
+
+  const abrirConfirmacionRedimir = (premio: Premio) => {
+    setMensaje("")
+
+    const cantidadTexto = cantidades[premio.id]
+    const cantidad = Number(cantidadTexto === "" ? 0 : cantidadTexto || "1")
+    const errorValidacion = validarRedencion(premio, cantidad)
+
+    if (errorValidacion) {
+      setMensaje(errorValidacion)
       return
     }
 
+    setPremioPendiente(premio)
+    setCantidadPendiente(cantidad)
+    setConfirmOpen(true)
+  }
+
+  const cerrarConfirmacion = () => {
+    if (procesandoPremioId) return
+    setConfirmOpen(false)
+    setPremioPendiente(null)
+    setCantidadPendiente(0)
+  }
+
+  const confirmarRedencion = async () => {
+    if (!premioPendiente) return
+
+    const premio = premioPendiente
+    const cantidad = cantidadPendiente
+    const emailGuardado = localStorage.getItem("cliente_email")
+
+    if (!emailGuardado) {
+      setMensaje("No se encontró el usuario logueado.")
+      cerrarConfirmacion()
+      return
+    }
+
+    setMensaje("")
     setProcesandoPremioId(premio.id)
 
     const grupoActivo = await obtenerGrupoActivoDelDia(emailGuardado)
@@ -370,6 +401,7 @@ export default function PremiosPage() {
     if (redencionError) {
       setMensaje("Ocurrió un error al redimir: " + redencionError.message)
       setProcesandoPremioId("")
+      setConfirmOpen(false)
       return
     }
 
@@ -381,6 +413,7 @@ export default function PremiosPage() {
     if (stockError) {
       setMensaje("La redención se guardó, pero hubo un problema al actualizar el stock.")
       setProcesandoPremioId("")
+      setConfirmOpen(false)
       return
     }
 
@@ -392,12 +425,22 @@ export default function PremiosPage() {
     }))
 
     setProcesandoPremioId("")
+    setConfirmOpen(false)
+    setPremioPendiente(null)
+    setCantidadPendiente(0)
     await cargarDatos()
   }
 
   const refrescarPantalla = () => {
     cargarDatos()
   }
+
+  const textoConfirmacionPremio = premioPendiente
+    ? `Vas a redimir ${cantidadPendiente} ${pluralizarNombrePremio(
+        premioPendiente.name || "ítem",
+        cantidadPendiente
+      )}. Esta acción descontará tus puntos disponibles.`
+    : ""
 
   return (
     <>
@@ -613,7 +656,7 @@ export default function PremiosPage() {
                       <button style={buttonDisabled}>Sin puntos suficientes</button>
                     ) : (
                       <button
-                        onClick={() => handleRedimir(premio)}
+                        onClick={() => abrirConfirmacionRedimir(premio)}
                         style={buttonGold}
                         disabled={procesando}
                       >
@@ -646,6 +689,17 @@ export default function PremiosPage() {
           }
         `}</style>
       </main>
+
+      <ConfirmModal
+        open={confirmOpen}
+        title="Confirmar redención"
+        message={textoConfirmacionPremio}
+        confirmText="Sí, redimir"
+        cancelText="Cancelar"
+        loading={Boolean(procesandoPremioId)}
+        onCancel={cerrarConfirmacion}
+        onConfirm={confirmarRedencion}
+      />
     </>
   )
 }
