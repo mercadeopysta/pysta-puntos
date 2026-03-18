@@ -14,43 +14,48 @@ type Factura = {
   invoice_number: string
   invoice_date: string
   amount_without_vat: number
-  notes: string | null
   status: string
+  notes: string | null
   file_url: string | null
   file_name: string | null
+  created_at: string
 }
 
 type ProfileRow = {
   email: string
-  full_name: string
-  document_number: string
+  full_name: string | null
+  document_number?: string | null
+  advisor_name?: string | null
+  client_type?: string | null
 }
 
-type FacturaConCliente = Factura & {
-  client_name: string
-  document_number: string
-}
+type BulkAction = "approved" | "rejected" | "deleted" | ""
 
 export default function AdminFacturasPage() {
   const router = useRouter()
 
   const [autorizado, setAutorizado] = useState(false)
-  const [facturas, setFacturas] = useState<FacturaConCliente[]>([])
+  const [facturas, setFacturas] = useState<Factura[]>([])
+  const [profilesMap, setProfilesMap] = useState<Record<string, ProfileRow>>({})
   const [cargando, setCargando] = useState(true)
+
   const [mensaje, setMensaje] = useState("")
   const [tipoMensaje, setTipoMensaje] = useState<"success" | "error" | "warning" | "info">("info")
-  const [filtroNombre, setFiltroNombre] = useState("")
-  const [filtroDocumento, setFiltroDocumento] = useState("")
+
+  const [filtroTexto, setFiltroTexto] = useState("")
   const [filtroEstado, setFiltroEstado] = useState("")
-  const [seleccionadas, setSeleccionadas] = useState<string[]>([])
-  const [procesandoMasivo, setProcesandoMasivo] = useState(false)
 
+  const [seleccionados, setSeleccionados] = useState<string[]>([])
+  const [bulkAction, setBulkAction] = useState<BulkAction>("")
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [facturaAEliminar, setFacturaAEliminar] = useState<FacturaConCliente | null>(null)
-  const [eliminando, setEliminando] = useState(false)
+  const [confirmDanger, setConfirmDanger] = useState(false)
+  const [confirmTitle, setConfirmTitle] = useState("")
+  const [confirmMessage, setConfirmMessage] = useState("")
+  const [ejecutandoMasivo, setEjecutandoMasivo] = useState(false)
 
-  const [confirmMasivoOpen, setConfirmMasivoOpen] = useState(false)
-  const [accionMasivaPendiente, setAccionMasivaPendiente] = useState("")
+  const [facturaAEliminar, setFacturaAEliminar] = useState<Factura | null>(null)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [eliminandoFactura, setEliminandoFactura] = useState(false)
 
   useEffect(() => {
     const adminLogueado = localStorage.getItem("admin_logged_in")
@@ -63,210 +68,54 @@ export default function AdminFacturasPage() {
     setAutorizado(true)
   }, [router])
 
-  const cargarFacturas = async () => {
+  const cargarDatos = async () => {
     setCargando(true)
     setMensaje("")
 
-    const { data, error } = await supabase
+    const { data: facturasData, error: facturasError } = await supabase
       .from("invoices")
-      .select("id, user_email, invoice_number, invoice_date, amount_without_vat, notes, status, file_url, file_name")
+      .select("id, user_email, invoice_number, invoice_date, amount_without_vat, status, notes, file_url, file_name, created_at")
       .order("created_at", { ascending: false })
 
-    if (error) {
+    if (facturasError) {
       setTipoMensaje("error")
       setMensaje("Ocurrió un error al cargar las facturas.")
       setCargando(false)
       return
     }
 
-    const facturasRows = (data as Factura[]) || []
-    const emails = Array.from(new Set(facturasRows.map((f) => f.user_email).filter(Boolean)))
+    const facturasRows = (facturasData as Factura[]) || []
+    setFacturas(facturasRows)
 
-    let profilesMap: Record<string, { full_name: string; document_number: string }> = {}
+    const correos = Array.from(new Set(facturasRows.map((f) => f.user_email).filter(Boolean)))
 
-    if (emails.length > 0) {
-      const { data: profilesData } = await supabase
+    if (correos.length > 0) {
+      const { data: perfilesData } = await supabase
         .from("profiles")
-        .select("email, full_name, document_number")
-        .in("email", emails)
+        .select("email, full_name, document_number, advisor_name, client_type")
+        .in("email", correos)
 
-      if (profilesData) {
-        ;(profilesData as ProfileRow[]).forEach((profile) => {
-          profilesMap[profile.email] = {
-            full_name: profile.full_name || profile.email,
-            document_number: profile.document_number || "",
-          }
-        })
-      }
+      const mapa: Record<string, ProfileRow> = {}
+
+      ;((perfilesData as ProfileRow[]) || []).forEach((perfil) => {
+        if (perfil.email) {
+          mapa[perfil.email] = perfil
+        }
+      })
+
+      setProfilesMap(mapa)
+    } else {
+      setProfilesMap({})
     }
 
-    const enriquecidas: FacturaConCliente[] = facturasRows.map((factura) => ({
-      ...factura,
-      client_name: profilesMap[factura.user_email]?.full_name || factura.user_email,
-      document_number: profilesMap[factura.user_email]?.document_number || "",
-    }))
-
-    setFacturas(enriquecidas)
-    setSeleccionadas((prev) => prev.filter((id) => enriquecidas.some((f) => f.id === id)))
     setCargando(false)
   }
 
   useEffect(() => {
     if (autorizado) {
-      cargarFacturas()
+      cargarDatos()
     }
   }, [autorizado])
-
-  const cambiarEstado = async (id: string, nuevoEstado: string) => {
-    setMensaje("")
-
-    const { error } = await supabase
-      .from("invoices")
-      .update({ status: nuevoEstado })
-      .eq("id", id)
-
-    if (error) {
-      setTipoMensaje("error")
-      setMensaje("Ocurrió un error al actualizar la factura: " + error.message)
-      return
-    }
-
-    setTipoMensaje("success")
-    setMensaje(`Factura actualizada a estado: ${traducirEstado(nuevoEstado)}`)
-    cargarFacturas()
-  }
-
-  const cambiarEstadoMasivo = async (nuevoEstado: string) => {
-    setMensaje("")
-
-    if (seleccionadas.length === 0) {
-      setTipoMensaje("warning")
-      setMensaje("Selecciona al menos una factura.")
-      return
-    }
-
-    try {
-      setProcesandoMasivo(true)
-
-      const { error } = await supabase
-        .from("invoices")
-        .update({ status: nuevoEstado })
-        .in("id", seleccionadas)
-
-      if (error) {
-        setTipoMensaje("error")
-        setMensaje("Ocurrió un error al actualizar las facturas: " + error.message)
-        setProcesandoMasivo(false)
-        return
-      }
-
-      setTipoMensaje("success")
-      setMensaje(
-        `${seleccionadas.length} factura(s) actualizadas a estado: ${traducirEstado(nuevoEstado)}`
-      )
-      setSeleccionadas([])
-      await cargarFacturas()
-    } finally {
-      setProcesandoMasivo(false)
-    }
-  }
-
-  const eliminarFacturasMasivas = async () => {
-    setMensaje("")
-
-    if (seleccionadas.length === 0) {
-      setTipoMensaje("warning")
-      setMensaje("Selecciona al menos una factura.")
-      return
-    }
-
-    try {
-      setProcesandoMasivo(true)
-
-      const { error } = await supabase
-        .from("invoices")
-        .delete()
-        .in("id", seleccionadas)
-
-      if (error) {
-        setTipoMensaje("error")
-        setMensaje("Ocurrió un error al eliminar las facturas: " + error.message)
-        setProcesandoMasivo(false)
-        return
-      }
-
-      setTipoMensaje("success")
-      setMensaje(`${seleccionadas.length} factura(s) eliminadas correctamente.`)
-      setSeleccionadas([])
-      await cargarFacturas()
-    } finally {
-      setProcesandoMasivo(false)
-    }
-  }
-
-  const abrirConfirmacionMasiva = (accion: string) => {
-    if (seleccionadas.length === 0) {
-      setTipoMensaje("warning")
-      setMensaje("Selecciona al menos una factura.")
-      return
-    }
-
-    setAccionMasivaPendiente(accion)
-    setConfirmMasivoOpen(true)
-  }
-
-  const confirmarAccionMasiva = async () => {
-    const accion = accionMasivaPendiente
-    setConfirmMasivoOpen(false)
-    setAccionMasivaPendiente("")
-
-    if (!accion) return
-
-    if (accion === "delete") {
-      await eliminarFacturasMasivas()
-      return
-    }
-
-    await cambiarEstadoMasivo(accion)
-  }
-
-  const pedirEliminarFactura = (factura: FacturaConCliente) => {
-    setFacturaAEliminar(factura)
-    setConfirmOpen(true)
-  }
-
-  const cerrarModalEliminar = () => {
-    if (eliminando) return
-    setConfirmOpen(false)
-    setFacturaAEliminar(null)
-  }
-
-  const confirmarEliminarFactura = async () => {
-    if (!facturaAEliminar) return
-
-    setMensaje("")
-    setEliminando(true)
-
-    const { error } = await supabase
-      .from("invoices")
-      .delete()
-      .eq("id", facturaAEliminar.id)
-
-    if (error) {
-      setTipoMensaje("error")
-      setMensaje("Ocurrió un error al eliminar la factura: " + error.message)
-      setEliminando(false)
-      return
-    }
-
-    setTipoMensaje("success")
-    setMensaje("Factura eliminada correctamente.")
-    await cargarFacturas()
-    setSeleccionadas((prev) => prev.filter((id) => id !== facturaAEliminar.id))
-    setEliminando(false)
-    setConfirmOpen(false)
-    setFacturaAEliminar(null)
-  }
 
   const traducirEstado = (estado: string) => {
     if (estado === "approved") return "Aprobada"
@@ -275,7 +124,14 @@ export default function AdminFacturasPage() {
     return estado
   }
 
-  const estadoBadge = (estado: string) => {
+  const descripcionEstado = (estado: string) => {
+    if (estado === "approved") return "Factura validada correctamente."
+    if (estado === "rejected") return "Factura rechazada."
+    if (estado === "pending") return "Pendiente de revisión."
+    return "Estado actual de la factura."
+  }
+
+  const estadoStyles = (estado: string) => {
     if (estado === "approved") {
       return {
         background: "#ecfdf3",
@@ -300,69 +156,260 @@ export default function AdminFacturasPage() {
   }
 
   const facturasFiltradas = useMemo(() => {
-    const nombre = filtroNombre.trim().toLowerCase()
-    const documento = filtroDocumento.trim().toLowerCase()
+    const texto = filtroTexto.trim().toLowerCase()
     const estado = filtroEstado.trim().toLowerCase()
 
     return facturas.filter((factura) => {
-      const coincideNombre = !nombre || factura.client_name.toLowerCase().includes(nombre)
-      const coincideDocumento =
-        !documento || (factura.document_number || "").toLowerCase().includes(documento)
-      const coincideEstado = !estado || (factura.status || "").toLowerCase() === estado
+      const perfil = profilesMap[factura.user_email]
 
-      return coincideNombre && coincideDocumento && coincideEstado
+      const coincideTexto =
+        !texto ||
+        factura.invoice_number.toLowerCase().includes(texto) ||
+        factura.user_email.toLowerCase().includes(texto) ||
+        (perfil?.full_name || "").toLowerCase().includes(texto) ||
+        (perfil?.document_number || "").toLowerCase().includes(texto) ||
+        (perfil?.advisor_name || "").toLowerCase().includes(texto) ||
+        (perfil?.client_type || "").toLowerCase().includes(texto)
+
+      const coincideEstado = !estado || factura.status.toLowerCase() === estado
+
+      return coincideTexto && coincideEstado
     })
-  }, [facturas, filtroNombre, filtroDocumento, filtroEstado])
+  }, [facturas, profilesMap, filtroTexto, filtroEstado])
 
-  const idsFiltrados = facturasFiltradas.map((factura) => factura.id)
-  const todasVisiblesSeleccionadas =
-    idsFiltrados.length > 0 && idsFiltrados.every((id) => seleccionadas.includes(id))
+  const totalFacturas = facturas.length
+  const totalPendientes = facturas.filter((f) => f.status === "pending").length
+  const totalAprobadas = facturas.filter((f) => f.status === "approved").length
+  const totalRechazadas = facturas.filter((f) => f.status === "rejected").length
 
-  const toggleSeleccion = (id: string) => {
-    setSeleccionadas((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+  const idsVisibles = facturasFiltradas.map((f) => f.id)
+  const todosVisiblesSeleccionados =
+    idsVisibles.length > 0 && idsVisibles.every((id) => seleccionados.includes(id))
+
+  const toggleSeleccion = (facturaId: string) => {
+    setSeleccionados((prev) =>
+      prev.includes(facturaId) ? prev.filter((id) => id !== facturaId) : [...prev, facturaId]
     )
   }
 
-  const toggleSeleccionarTodasVisibles = () => {
-    if (todasVisiblesSeleccionadas) {
-      setSeleccionadas((prev) => prev.filter((id) => !idsFiltrados.includes(id)))
+  const toggleSeleccionarTodosVisibles = () => {
+    if (todosVisiblesSeleccionados) {
+      setSeleccionados((prev) => prev.filter((id) => !idsVisibles.includes(id)))
       return
     }
 
-    setSeleccionadas((prev) => Array.from(new Set([...prev, ...idsFiltrados])))
+    setSeleccionados((prev) => Array.from(new Set([...prev, ...idsVisibles])))
   }
 
-  const totalAprobadas = facturas.filter((f) => f.status === "approved").length
-  const totalPendientes = facturas.filter((f) => f.status === "pending").length
-  const totalRechazadas = facturas.filter((f) => f.status === "rejected").length
-  const valorTotal = facturas.reduce((acc, f) => acc + Number(f.amount_without_vat || 0), 0)
+  const aprobarFactura = async (facturaId: string) => {
+    setMensaje("")
 
-  const refrescarPantalla = () => {
-    cargarFacturas()
+    const { error } = await supabase
+      .from("invoices")
+      .update({ status: "approved" })
+      .eq("id", facturaId)
+
+    if (error) {
+      setTipoMensaje("error")
+      setMensaje("No se pudo aprobar la factura: " + error.message)
+      return
+    }
+
+    setTipoMensaje("success")
+    setMensaje("Factura aprobada correctamente.")
+    cargarDatos()
   }
 
-  const textoConfirmacionMasiva =
-    accionMasivaPendiente === "rejected"
-      ? `¿Seguro que deseas rechazar ${seleccionadas.length} factura(s)?`
-      : accionMasivaPendiente === "approved"
-      ? `¿Seguro que deseas aprobar ${seleccionadas.length} factura(s)?`
-      : accionMasivaPendiente === "pending"
-      ? `¿Seguro que deseas poner en pendiente ${seleccionadas.length} factura(s)?`
-      : accionMasivaPendiente === "delete"
-      ? `¿Seguro que deseas eliminar ${seleccionadas.length} factura(s)? Esta acción no se puede deshacer.`
-      : ""
+  const rechazarFactura = async (facturaId: string) => {
+    setMensaje("")
 
-  const textoBotonConfirmacionMasiva =
-    accionMasivaPendiente === "rejected"
-      ? "Sí, rechazar"
-      : accionMasivaPendiente === "approved"
-      ? "Sí, aprobar"
-      : accionMasivaPendiente === "pending"
-      ? "Sí, poner pendientes"
-      : accionMasivaPendiente === "delete"
-      ? "Sí, eliminar"
-      : "Confirmar"
+    const { error } = await supabase
+      .from("invoices")
+      .update({ status: "rejected" })
+      .eq("id", facturaId)
+
+    if (error) {
+      setTipoMensaje("error")
+      setMensaje("No se pudo rechazar la factura: " + error.message)
+      return
+    }
+
+    setTipoMensaje("success")
+    setMensaje("Factura rechazada correctamente.")
+    cargarDatos()
+  }
+
+  const pedirEliminarFactura = (factura: Factura) => {
+    setFacturaAEliminar(factura)
+    setConfirmDeleteOpen(true)
+  }
+
+  const cerrarEliminarFactura = () => {
+    if (eliminandoFactura) return
+    setConfirmDeleteOpen(false)
+    setFacturaAEliminar(null)
+  }
+
+  const confirmarEliminarFactura = async () => {
+    if (!facturaAEliminar) return
+
+    setEliminandoFactura(true)
+    setMensaje("")
+
+    const { error } = await supabase
+      .from("invoices")
+      .delete()
+      .eq("id", facturaAEliminar.id)
+
+    if (error) {
+      setTipoMensaje("error")
+      setMensaje("No se pudo eliminar la factura: " + error.message)
+      setEliminandoFactura(false)
+      return
+    }
+
+    setTipoMensaje("success")
+    setMensaje("Factura eliminada correctamente.")
+    setSeleccionados((prev) => prev.filter((id) => id !== facturaAEliminar.id))
+    setConfirmDeleteOpen(false)
+    setFacturaAEliminar(null)
+    setEliminandoFactura(false)
+    cargarDatos()
+  }
+
+  const abrirConfirmacionMasiva = (accion: BulkAction) => {
+    if (!accion) return
+
+    if (seleccionados.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("Debes seleccionar al menos una factura.")
+      return
+    }
+
+    setBulkAction(accion)
+    setConfirmOpen(true)
+    setConfirmDanger(accion === "deleted")
+    setConfirmTitle("Confirmar acción masiva")
+
+    if (accion === "approved") {
+      setConfirmMessage(`¿Seguro que deseas aprobar ${seleccionados.length} factura(s)?`)
+    }
+
+    if (accion === "rejected") {
+      setConfirmMessage(`¿Seguro que deseas rechazar ${seleccionados.length} factura(s)?`)
+    }
+
+    if (accion === "deleted") {
+      setConfirmMessage(`¿Seguro que deseas eliminar ${seleccionados.length} factura(s)? Esta acción no se puede deshacer.`)
+    }
+  }
+
+  const cerrarConfirmacionMasiva = () => {
+    if (ejecutandoMasivo) return
+    setConfirmOpen(false)
+    setBulkAction("")
+    setConfirmDanger(false)
+    setConfirmTitle("")
+    setConfirmMessage("")
+  }
+
+  const ejecutarAccionMasiva = async () => {
+    if (!bulkAction || seleccionados.length === 0) return
+
+    setEjecutandoMasivo(true)
+    setMensaje("")
+
+    if (bulkAction === "deleted") {
+      const { error } = await supabase
+        .from("invoices")
+        .delete()
+        .in("id", seleccionados)
+
+      if (error) {
+        setTipoMensaje("error")
+        setMensaje("No se pudo ejecutar la eliminación masiva: " + error.message)
+        setEjecutandoMasivo(false)
+        return
+      }
+    } else {
+      const nuevoEstado = bulkAction === "approved" ? "approved" : "rejected"
+
+      const { error } = await supabase
+        .from("invoices")
+        .update({ status: nuevoEstado })
+        .in("id", seleccionados)
+
+      if (error) {
+        setTipoMensaje("error")
+        setMensaje("No se pudo ejecutar la acción masiva: " + error.message)
+        setEjecutandoMasivo(false)
+        return
+      }
+    }
+
+    setTipoMensaje("success")
+    setMensaje(`Acción masiva aplicada correctamente a ${seleccionados.length} factura(s).`)
+    setSeleccionados([])
+    setBulkAction("")
+    setConfirmOpen(false)
+    setEjecutandoMasivo(false)
+    cargarDatos()
+  }
+
+  const exportarCSV = () => {
+    if (facturasFiltradas.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("No hay facturas filtradas para exportar.")
+      return
+    }
+
+    const filas = facturasFiltradas.map((factura) => {
+      const perfil = profilesMap[factura.user_email]
+
+      return {
+        numero_factura: factura.invoice_number,
+        fecha_factura: factura.invoice_date,
+        correo: factura.user_email,
+        cliente: perfil?.full_name || "",
+        documento: perfil?.document_number || "",
+        asesor: perfil?.advisor_name || "",
+        tipo_cliente: perfil?.client_type || "",
+        valor_sin_iva: String(factura.amount_without_vat || 0),
+        estado: traducirEstado(factura.status),
+        observaciones: factura.notes || "",
+        archivo: factura.file_name || "",
+      }
+    })
+
+    const encabezados = Object.keys(filas[0])
+    const csv = [
+      encabezados.join(","),
+      ...filas.map((fila) =>
+        encabezados
+          .map((campo) => {
+            const valor = String(fila[campo as keyof typeof fila] ?? "")
+            const limpio = valor.replace(/"/g, '""')
+            return `"${limpio}"`
+          })
+          .join(",")
+      ),
+    ].join("\n")
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    const fecha = new Date().toISOString().slice(0, 10)
+
+    link.href = url
+    link.setAttribute("download", `facturas-pysta-${fecha}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    setTipoMensaje("success")
+    setMensaje("CSV exportado correctamente.")
+  }
 
   if (!autorizado) {
     return (
@@ -377,7 +424,7 @@ export default function AdminFacturasPage() {
   return (
     <>
       <main className="pysta-page">
-        <div className="pysta-shell" style={{ maxWidth: "1650px" }}>
+        <div className="pysta-shell" style={{ maxWidth: "1480px" }}>
           <AdminMenu />
 
           <section
@@ -390,18 +437,15 @@ export default function AdminFacturasPage() {
           >
             <div className="pysta-topbar">
               <div style={{ display: "grid", gap: "10px" }}>
-                <span className="pysta-badge">Gestión documental</span>
+                <span className="pysta-badge">Gestión de facturas</span>
                 <h1 className="pysta-section-title">Administrar facturas</h1>
                 <p className="pysta-subtitle">
-                  Revisa, aprueba, rechaza o elimina las facturas cargadas por los clientes.
+                  Revisa, filtra, aprueba, rechaza, elimina y exporta facturas filtradas a CSV.
                 </p>
               </div>
 
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                <button
-                  onClick={refrescarPantalla}
-                  className="pysta-btn pysta-btn-light"
-                >
+                <button onClick={cargarDatos} className="pysta-btn pysta-btn-light">
                   Refrescar
                 </button>
 
@@ -418,18 +462,17 @@ export default function AdminFacturasPage() {
               marginBottom: "22px",
             }}
           >
-            <ResumenCard titulo="Facturas totales" valor={String(facturas.length)} descripcion="Documentos registrados" />
-            <ResumenCard titulo="Aprobadas" valor={String(totalAprobadas)} descripcion="Ya validadas" />
-            <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="En revisión" />
+            <ResumenCard titulo="Facturas totales" valor={String(totalFacturas)} descripcion="Registros cargados" />
+            <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="Por revisar" />
+            <ResumenCard titulo="Aprobadas" valor={String(totalAprobadas)} descripcion="Validadas" />
             <ResumenCard titulo="Rechazadas" valor={String(totalRechazadas)} descripcion="No aprobadas" />
-            <ResumenCard titulo="Valor acumulado" valor={`$${valorTotal.toLocaleString("es-CO")}`} descripcion="Suma sin IVA" />
           </section>
 
           <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
             <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
               <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
               <p style={{ margin: 0, color: "#6b7280" }}>
-                Encuentra facturas por cliente, documento o estado de validación.
+                Busca por número de factura, correo, cliente, documento, asesor o tipo de cliente.
               </p>
             </div>
 
@@ -442,38 +485,22 @@ export default function AdminFacturasPage() {
               }}
             >
               <div>
-                <label style={labelStyle}>Filtrar por nombre</label>
+                <label style={labelStyle}>Buscar</label>
                 <input
                   className="pysta-input"
-                  type="text"
-                  placeholder="Ej: Juan Pérez"
-                  value={filtroNombre}
-                  onChange={(e) => setFiltroNombre(e.target.value)}
+                  placeholder="Factura, correo, cliente, documento, asesor o tipo"
+                  value={filtroTexto}
+                  onChange={(e) => setFiltroTexto(e.target.value)}
                 />
               </div>
 
               <div>
-                <label style={labelStyle}>Filtrar por documento</label>
-                <input
-                  className="pysta-input"
-                  type="text"
-                  placeholder="Ej: 123456789"
-                  value={filtroDocumento}
-                  onChange={(e) => setFiltroDocumento(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Filtrar por estado</label>
-                <select
-                  className="pysta-select"
-                  value={filtroEstado}
-                  onChange={(e) => setFiltroEstado(e.target.value)}
-                >
-                  <option value="">Todas</option>
-                  <option value="approved">Aprobadas</option>
-                  <option value="rejected">Rechazadas</option>
-                  <option value="pending">Pendientes</option>
+                <label style={labelStyle}>Estado</label>
+                <select className="pysta-select" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+                  <option value="">Todos</option>
+                  <option value="pending">Pendiente</option>
+                  <option value="approved">Aprobada</option>
+                  <option value="rejected">Rechazada</option>
                 </select>
               </div>
             </div>
@@ -481,8 +508,7 @@ export default function AdminFacturasPage() {
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
               <button
                 onClick={() => {
-                  setFiltroNombre("")
-                  setFiltroDocumento("")
+                  setFiltroTexto("")
                   setFiltroEstado("")
                 }}
                 className="pysta-btn pysta-btn-light"
@@ -490,66 +516,42 @@ export default function AdminFacturasPage() {
                 Limpiar filtros
               </button>
 
-              <button
-                onClick={toggleSeleccionarTodasVisibles}
-                className="pysta-btn pysta-btn-light"
-              >
-                {todasVisiblesSeleccionadas ? "Quitar visibles" : "Seleccionar visibles"}
-              </button>
-
-              <button
-                onClick={() => setSeleccionadas([])}
-                className="pysta-btn pysta-btn-light"
-              >
-                Limpiar selección
+              <button onClick={exportarCSV} className="pysta-btn pysta-btn-gold">
+                Exportar CSV
               </button>
             </div>
           </section>
 
           <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
-            <div style={{ display: "grid", gap: "8px", marginBottom: "16px" }}>
-              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Acciones masivas</h2>
-              <p style={{ margin: 0, color: "#6b7280" }}>
-                Facturas seleccionadas: {seleccionadas.length}
-              </p>
-            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "16px",
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <div style={{ display: "grid", gap: "6px" }}>
+                <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Acciones masivas</h2>
+                <p style={{ margin: 0, color: "#6b7280" }}>
+                  Seleccionadas: {seleccionados.length}
+                </p>
+              </div>
 
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <button
-                onClick={() => abrirConfirmacionMasiva("approved")}
-                className="pysta-btn pysta-btn-gold"
-                disabled={procesandoMasivo}
-                style={{ opacity: procesandoMasivo ? 0.7 : 1 }}
-              >
-                Aprobar seleccionadas
-              </button>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button onClick={() => abrirConfirmacionMasiva("approved")} className="pysta-btn pysta-btn-gold">
+                  Aprobar seleccionadas
+                </button>
 
-              <button
-                onClick={() => abrirConfirmacionMasiva("rejected")}
-                className="pysta-btn pysta-btn-light"
-                disabled={procesandoMasivo}
-                style={{ opacity: procesandoMasivo ? 0.7 : 1 }}
-              >
-                Rechazar seleccionadas
-              </button>
+                <button onClick={() => abrirConfirmacionMasiva("rejected")} className="pysta-btn pysta-btn-light">
+                  Rechazar seleccionadas
+                </button>
 
-              <button
-                onClick={() => abrirConfirmacionMasiva("pending")}
-                className="pysta-btn pysta-btn-dark"
-                disabled={procesandoMasivo}
-                style={{ opacity: procesandoMasivo ? 0.7 : 1 }}
-              >
-                Poner pendientes
-              </button>
-
-              <button
-                onClick={() => abrirConfirmacionMasiva("delete")}
-                className="pysta-btn pysta-btn-danger"
-                disabled={procesandoMasivo}
-                style={{ opacity: procesandoMasivo ? 0.7 : 1 }}
-              >
-                Eliminar seleccionadas
-              </button>
+                <button onClick={() => abrirConfirmacionMasiva("deleted")} className="pysta-btn pysta-btn-danger">
+                  Eliminar seleccionadas
+                </button>
+              </div>
             </div>
           </section>
 
@@ -567,10 +569,29 @@ export default function AdminFacturasPage() {
                 background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
               }}
             >
-              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Listado de facturas</h2>
-              <p style={{ margin: "6px 0 0 0", color: "#6b7280" }}>
-                Total encontradas: {facturasFiltradas.length}
-              </p>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Listado de facturas</h2>
+                  <p style={{ margin: "6px 0 0 0", color: "#6b7280" }}>
+                    Total encontradas: {facturasFiltradas.length}
+                  </p>
+                </div>
+
+                <button
+                  onClick={toggleSeleccionarTodosVisibles}
+                  className="pysta-btn pysta-btn-light"
+                >
+                  {todosVisiblesSeleccionados ? "Quitar selección visibles" : "Seleccionar visibles"}
+                </button>
+              </div>
             </div>
 
             {cargando ? (
@@ -581,14 +602,15 @@ export default function AdminFacturasPage() {
               <div style={{ padding: "18px" }}>
                 <div style={{ display: "grid", gap: "14px" }}>
                   {facturasFiltradas.map((factura) => {
-                    const seleccionada = seleccionadas.includes(factura.id)
+                    const seleccionado = seleccionados.includes(factura.id)
+                    const perfil = profilesMap[factura.user_email]
 
                     return (
                       <article
                         key={factura.id}
                         style={{
-                          background: seleccionada ? "#fffdf5" : "#fff",
-                          border: seleccionada ? "1px solid #f3d37a" : "1px solid #e5e7eb",
+                          background: seleccionado ? "#fffdf5" : "#fff",
+                          border: seleccionado ? "1px solid #f3d37a" : "1px solid #e5e7eb",
                           borderRadius: "20px",
                           padding: "20px",
                           boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
@@ -607,25 +629,26 @@ export default function AdminFacturasPage() {
                           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
                             <input
                               type="checkbox"
-                              checked={seleccionada}
+                              checked={seleccionado}
                               onChange={() => toggleSeleccion(factura.id)}
-                              style={{ width: "18px", height: "18px", marginTop: "6px" }}
+                              style={{ width: "18px", height: "18px", marginTop: "4px" }}
                             />
 
                             <div style={{ display: "grid", gap: "8px" }}>
                               <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
-                                {factura.client_name}
+                                {factura.invoice_number}
                               </h3>
 
                               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                                <span style={miniBadge}>
-                                  Factura #{factura.invoice_number}
-                                </span>
-
                                 <span
                                   style={{
-                                    ...miniBadge,
-                                    ...estadoBadge(factura.status),
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    padding: "6px 10px",
+                                    borderRadius: "999px",
+                                    fontSize: "12px",
+                                    fontWeight: "bold",
+                                    ...estadoStyles(factura.status),
                                   }}
                                 >
                                   {traducirEstado(factura.status)}
@@ -635,43 +658,37 @@ export default function AdminFacturasPage() {
                           </div>
 
                           <div className="pysta-actions">
-                            {factura.file_url ? (
+                            {factura.status !== "approved" && (
+                              <button
+                                onClick={() => aprobarFactura(factura.id)}
+                                className="pysta-btn pysta-btn-gold"
+                                style={smallActionBtn}
+                              >
+                                Aprobar
+                              </button>
+                            )}
+
+                            {factura.status !== "rejected" && (
+                              <button
+                                onClick={() => rechazarFactura(factura.id)}
+                                className="pysta-btn pysta-btn-light"
+                                style={smallActionBtn}
+                              >
+                                Rechazar
+                              </button>
+                            )}
+
+                            {factura.file_url && (
                               <a
                                 href={factura.file_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="pysta-btn pysta-btn-light"
-                                style={smallActionBtn}
+                                className="pysta-btn pysta-btn-dark"
+                                style={smallLinkBtn}
                               >
                                 Ver archivo
                               </a>
-                            ) : (
-                              <span style={smallMutedBox}>Sin archivo</span>
                             )}
-
-                            <button
-                              onClick={() => cambiarEstado(factura.id, "approved")}
-                              className="pysta-btn pysta-btn-gold"
-                              style={smallActionBtn}
-                            >
-                              Aprobar
-                            </button>
-
-                            <button
-                              onClick={() => cambiarEstado(factura.id, "rejected")}
-                              className="pysta-btn pysta-btn-light"
-                              style={smallActionBtn}
-                            >
-                              Rechazar
-                            </button>
-
-                            <button
-                              onClick={() => cambiarEstado(factura.id, "pending")}
-                              className="pysta-btn pysta-btn-dark"
-                              style={smallActionBtn}
-                            >
-                              Pendiente
-                            </button>
 
                             <button
                               onClick={() => pedirEliminarFactura(factura)}
@@ -690,20 +707,21 @@ export default function AdminFacturasPage() {
                             gap: "12px",
                           }}
                         >
-                          <InfoItem label="Documento" value={factura.document_number || "-"} />
-                          <InfoItem label="Correo" value={factura.user_email} />
-                          <InfoItem label="Fecha factura" value={factura.invoice_date || "-"} />
+                          <InfoItem label="Fecha factura" value={factura.invoice_date} />
                           <InfoItem
                             label="Valor sin IVA"
-                            value={`$${Number(factura.amount_without_vat).toLocaleString("es-CO")}`}
+                            value={`$${Number(factura.amount_without_vat || 0).toLocaleString("es-CO")}`}
                           />
-                          <InfoItem
-                            label="Archivo"
-                            value={factura.file_name || "Archivo subido"}
-                          />
+                          <InfoItem label="Correo" value={factura.user_email} />
+                          <InfoItem label="Cliente" value={perfil?.full_name || "-"} />
+                          <InfoItem label="Documento" value={perfil?.document_number || "-"} />
+                          <InfoItem label="Asesor" value={perfil?.advisor_name || "-"} />
+                          <InfoItem label="Tipo de cliente" value={perfil?.client_type || "-"} />
+                          <InfoItem label="Estado actual" value={traducirEstado(factura.status)} />
+                          <InfoItem label="Detalle" value={descripcionEstado(factura.status)} />
                         </div>
 
-                        {factura.notes && (
+                        {factura.notes ? (
                           <div
                             style={{
                               marginTop: "12px",
@@ -713,14 +731,12 @@ export default function AdminFacturasPage() {
                               padding: "12px 14px",
                             }}
                           >
-                            <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
+                            <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
                               Observaciones
                             </p>
-                            <p style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>
-                              {factura.notes}
-                            </p>
+                            <p style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>{factura.notes}</p>
                           </div>
-                        )}
+                        ) : null}
                       </article>
                     )
                   })}
@@ -733,34 +749,30 @@ export default function AdminFacturasPage() {
 
       <ConfirmModal
         open={confirmOpen}
+        title={confirmTitle}
+        message={confirmMessage}
+        confirmText="Sí, continuar"
+        cancelText="Cancelar"
+        danger={confirmDanger}
+        loading={ejecutandoMasivo}
+        onCancel={cerrarConfirmacionMasiva}
+        onConfirm={ejecutarAccionMasiva}
+      />
+
+      <ConfirmModal
+        open={confirmDeleteOpen}
         title="Eliminar factura"
         message={
           facturaAEliminar
-            ? `¿Seguro que deseas eliminar la factura ${facturaAEliminar.invoice_number} de ${facturaAEliminar.client_name}? Esta acción no se puede deshacer.`
+            ? `¿Seguro que deseas eliminar la factura ${facturaAEliminar.invoice_number}? Esta acción no se puede deshacer.`
             : ""
         }
         confirmText="Sí, eliminar"
         cancelText="Cancelar"
         danger
-        loading={eliminando}
-        onCancel={cerrarModalEliminar}
+        loading={eliminandoFactura}
+        onCancel={cerrarEliminarFactura}
         onConfirm={confirmarEliminarFactura}
-      />
-
-      <ConfirmModal
-        open={confirmMasivoOpen}
-        title="Confirmar acción masiva"
-        message={textoConfirmacionMasiva}
-        confirmText={textoBotonConfirmacionMasiva}
-        cancelText="Cancelar"
-        danger={accionMasivaPendiente === "rejected" || accionMasivaPendiente === "delete"}
-        loading={procesandoMasivo}
-        onCancel={() => {
-          if (procesandoMasivo) return
-          setConfirmMasivoOpen(false)
-          setAccionMasivaPendiente("")
-        }}
-        onConfirm={confirmarAccionMasiva}
       />
     </>
   )
@@ -803,7 +815,7 @@ function InfoItem({ label, value }: { label: string; value: string }) {
       <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
         {label}
       </p>
-      <p style={{ margin: 0, fontSize: "15px", color: "#111", lineHeight: 1.5 }}>
+      <p style={{ margin: 0, fontSize: "15px", color: "#111", lineHeight: 1.5, wordBreak: "break-word" }}>
         {value}
       </p>
     </div>
@@ -818,31 +830,13 @@ const labelStyle = {
   fontSize: "14px",
 }
 
-const miniBadge = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "6px 10px",
-  borderRadius: "999px",
-  fontSize: "12px",
-  fontWeight: "bold" as const,
-  background: "rgba(212, 175, 55, 0.14)",
-  color: "#7a5b00",
-  border: "1px solid rgba(212, 175, 55, 0.24)",
-}
-
 const smallActionBtn = {
   padding: "10px 14px",
   fontSize: "13px",
 }
 
-const smallMutedBox = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
+const smallLinkBtn = {
   padding: "10px 14px",
-  borderRadius: "14px",
   fontSize: "13px",
-  background: "#f3f4f6",
-  color: "#6b7280",
-  border: "1px solid #e5e7eb",
+  textDecoration: "none",
 }

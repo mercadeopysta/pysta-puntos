@@ -375,6 +375,55 @@ export default function AdminClientesPage() {
     cargarClientes()
   }
 
+  const exportarCSV = () => {
+    if (clientesFiltrados.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("No hay clientes filtrados para exportar.")
+      return
+    }
+
+    const filas = clientesFiltrados.map((cliente) => ({
+      nombre: cliente.full_name || "",
+      correo: cliente.email || "",
+      documento: cliente.document_number || "",
+      telefono: cliente.phone || "",
+      tipo_cliente: cliente.client_type || "",
+      asesor: cliente.advisor_name || "",
+      aprobado: cliente.is_approved ? "Sí" : "No",
+      activo: cliente.is_active ? "Sí" : "No",
+      estado_general: textoEstadoGeneral(cliente),
+    }))
+
+    const encabezados = Object.keys(filas[0])
+    const csv = [
+      encabezados.join(","),
+      ...filas.map((fila) =>
+        encabezados
+          .map((campo) => {
+            const valor = String(fila[campo as keyof typeof fila] ?? "")
+            const limpio = valor.replace(/"/g, '""')
+            return `"${limpio}"`
+          })
+          .join(",")
+      ),
+    ].join("\n")
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    const fecha = new Date().toISOString().slice(0, 10)
+
+    link.href = url
+    link.setAttribute("download", `clientes-pysta-${fecha}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    setTipoMensaje("success")
+    setMensaje("CSV exportado correctamente.")
+  }
+
   if (!autorizado) {
     return (
       <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -404,7 +453,7 @@ export default function AdminClientesPage() {
                 <span className="pysta-badge">Gestión de clientes</span>
                 <h1 className="pysta-section-title">Administrar clientes</h1>
                 <p className="pysta-subtitle">
-                  Aprueba, activa, desactiva, edita y ahora también gestiona varios clientes al mismo tiempo.
+                  Aprueba, activa, desactiva, edita, selecciona varios y exporta tus clientes filtrados.
                 </p>
               </div>
 
@@ -551,6 +600,10 @@ export default function AdminClientesPage() {
                 className="pysta-btn pysta-btn-light"
               >
                 Limpiar filtros
+              </button>
+
+              <button onClick={exportarCSV} className="pysta-btn pysta-btn-gold">
+                Exportar CSV
               </button>
             </div>
           </section>
