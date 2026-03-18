@@ -51,6 +51,10 @@ export default function AdminClientesPage() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [ejecutandoMasivo, setEjecutandoMasivo] = useState(false)
 
+  const [clienteAEliminar, setClienteAEliminar] = useState<Cliente | null>(null)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [eliminandoCliente, setEliminandoCliente] = useState(false)
+
   useEffect(() => {
     const validar = async () => {
       const ok = await validarAccesoAdmin(router)
@@ -255,6 +259,81 @@ export default function AdminClientesPage() {
     setGuardandoEdicion(false)
     cancelarEdicion()
     cargarClientes()
+  }
+
+  const pedirEliminarCliente = (cliente: Cliente) => {
+    setClienteAEliminar(cliente)
+    setConfirmDeleteOpen(true)
+  }
+
+  const cerrarEliminarCliente = () => {
+    if (eliminandoCliente) return
+    setConfirmDeleteOpen(false)
+    setClienteAEliminar(null)
+  }
+
+  const eliminarClientePrueba = async () => {
+    if (!clienteAEliminar) return
+
+    setEliminandoCliente(true)
+    setMensaje("")
+
+    const email = (clienteAEliminar.email || "").trim().toLowerCase()
+    const profileId = clienteAEliminar.id
+
+    try {
+      const { error: redemptionsError } = await supabase
+        .from("redemptions")
+        .delete()
+        .eq("user_email", email)
+
+      if (redemptionsError) {
+        setTipoMensaje("error")
+        setMensaje("No se pudieron eliminar las redenciones del cliente: " + redemptionsError.message)
+        setEliminandoCliente(false)
+        return
+      }
+
+      const { error: invoicesError } = await supabase
+        .from("invoices")
+        .delete()
+        .eq("user_email", email)
+
+      if (invoicesError) {
+        setTipoMensaje("error")
+        setMensaje("No se pudieron eliminar las facturas del cliente: " + invoicesError.message)
+        setEliminandoCliente(false)
+        return
+      }
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .delete()
+        .eq("id", profileId)
+
+      if (profileError) {
+        setTipoMensaje("error")
+        setMensaje("No se pudo eliminar el perfil del cliente: " + profileError.message)
+        setEliminandoCliente(false)
+        return
+      }
+
+      setTipoMensaje("success")
+      setMensaje(
+        "Cliente de prueba eliminado de profiles, facturas y redenciones. Ojo: el usuario de autenticación de Supabase Auth puede seguir existiendo si no se elimina desde backend admin."
+      )
+
+      setSeleccionados((prev) => prev.filter((id) => id !== profileId))
+      setConfirmDeleteOpen(false)
+      setClienteAEliminar(null)
+      setEliminandoCliente(false)
+      cargarClientes()
+    } catch (error) {
+      const texto = error instanceof Error ? error.message : "Ocurrió un error inesperado al eliminar el cliente."
+      setTipoMensaje("error")
+      setMensaje(texto)
+      setEliminandoCliente(false)
+    }
   }
 
   const estadoGeneralCliente = (cliente: Cliente) => {
@@ -498,7 +577,7 @@ export default function AdminClientesPage() {
                 <span className="pysta-badge">Gestión de clientes</span>
                 <h1 className="pysta-section-title">Administrar clientes</h1>
                 <p className="pysta-subtitle">
-                  Aprueba, activa, desactiva, edita, selecciona varios y exporta tus clientes filtrados.
+                  Aprueba, activa, desactiva, edita, elimina clientes de prueba, selecciona varios y exporta tus clientes filtrados.
                 </p>
               </div>
 
@@ -840,6 +919,14 @@ export default function AdminClientesPage() {
                             >
                               Editar
                             </button>
+
+                            <button
+                              onClick={() => pedirEliminarCliente(cliente)}
+                              className="pysta-btn pysta-btn-danger"
+                              style={smallActionBtn}
+                            >
+                              Eliminar
+                            </button>
                           </div>
                         </div>
 
@@ -876,6 +963,22 @@ export default function AdminClientesPage() {
         loading={ejecutandoMasivo}
         onCancel={cerrarConfirmacionMasiva}
         onConfirm={ejecutarAccionMasiva}
+      />
+
+      <ConfirmModal
+        open={confirmDeleteOpen}
+        title="Eliminar cliente de prueba"
+        message={
+          clienteAEliminar
+            ? `¿Seguro que deseas eliminar a ${clienteAEliminar.full_name || clienteAEliminar.email}? Se eliminarán también sus facturas, redenciones y perfil. Esta acción no se puede deshacer.`
+            : ""
+        }
+        confirmText="Sí, eliminar"
+        cancelText="Cancelar"
+        danger
+        loading={eliminandoCliente}
+        onCancel={cerrarEliminarCliente}
+        onConfirm={eliminarClientePrueba}
       />
     </>
   )
