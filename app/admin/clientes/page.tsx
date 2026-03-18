@@ -23,6 +23,11 @@ type Cliente = {
 
 type BulkAction = "approve" | "activate" | "deactivate" | "unapprove" | ""
 
+type AdminLookupRow = {
+  id: string
+  email: string
+}
+
 export default function AdminClientesPage() {
   const router = useRouter()
 
@@ -50,15 +55,55 @@ export default function AdminClientesPage() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [ejecutandoMasivo, setEjecutandoMasivo] = useState(false)
 
-  useEffect(() => {
-    const adminLogueado = localStorage.getItem("admin_logged_in")
+  const limpiarSesionAdmin = () => {
+    localStorage.removeItem("admin_logged_in")
+    localStorage.removeItem("admin_email")
+    localStorage.removeItem("admin_nombre")
+    localStorage.removeItem("admin_login_at")
+    localStorage.removeItem("admin_session_expires_at")
+  }
 
-    if (adminLogueado !== "true") {
-      router.push("/admin/login")
-      return
+  useEffect(() => {
+    const validarAccesoAdmin = async () => {
+      const adminLogueado = localStorage.getItem("admin_logged_in")
+      const adminEmail = (localStorage.getItem("admin_email") || "").trim().toLowerCase()
+      const adminExpira = localStorage.getItem("admin_session_expires_at")
+
+      if (adminLogueado !== "true" || !adminEmail || !adminExpira) {
+        limpiarSesionAdmin()
+        router.replace("/admin/login")
+        return
+      }
+
+      const ahora = new Date()
+      const expiracion = new Date(adminExpira)
+
+      if (Number.isNaN(expiracion.getTime()) || expiracion < ahora) {
+        limpiarSesionAdmin()
+        router.replace("/admin/login")
+        return
+      }
+
+      const { data, error } = await supabase
+        .from("admin_users")
+        .select("id, email")
+        .eq("email", adminEmail)
+        .maybeSingle()
+
+      if (error || !data) {
+        limpiarSesionAdmin()
+        router.replace("/admin/login")
+        return
+      }
+
+      const admin = data as AdminLookupRow
+      localStorage.setItem("admin_email", admin.email || adminEmail)
+      localStorage.setItem("admin_nombre", admin.email || "Administrador")
+
+      setAutorizado(true)
     }
 
-    setAutorizado(true)
+    validarAccesoAdmin()
   }, [router])
 
   const normalizarCliente = (row: Record<string, unknown>): Cliente => {
