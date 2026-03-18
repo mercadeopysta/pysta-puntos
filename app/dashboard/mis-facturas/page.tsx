@@ -1,110 +1,78 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
-import LogoutButton from "../../../components/LogoutButton"
-import InfoPopup from "../../../components/InfoPopup"
 
 type Factura = {
   id: string
+  user_email: string
   invoice_number: string
   invoice_date: string
   amount_without_vat: number
   status: string
-  file_url?: string | null
-  file_name?: string | null
+  notes: string | null
+  file_url: string | null
+  file_name: string | null
+  created_at: string
 }
 
 export default function MisFacturasPage() {
   const router = useRouter()
 
-  const [autorizado, setAutorizado] = useState(false)
+  const [cargandoSesion, setCargandoSesion] = useState(true)
+  const [userEmail, setUserEmail] = useState("")
   const [facturas, setFacturas] = useState<Factura[]>([])
   const [cargando, setCargando] = useState(true)
+
   const [mensaje, setMensaje] = useState("")
-  const [nombreCliente, setNombreCliente] = useState("")
+  const [filtroEstado, setFiltroEstado] = useState("")
+  const [filtroTexto, setFiltroTexto] = useState("")
 
-  const cerrarSesionCliente = async () => {
-    await supabase.auth.signOut()
-    localStorage.removeItem("cliente_email")
-    localStorage.removeItem("cliente_name")
-    localStorage.removeItem("cliente_tipo")
-    router.replace("/login")
-  }
+  useEffect(() => {
+    const email = localStorage.getItem("user_email") || localStorage.getItem("cliente_email") || ""
 
-  const cargarFacturas = async () => {
-    try {
-      const sessionResponse = await supabase.auth.getSession()
-      const session = sessionResponse.data.session
-      const sessionError = sessionResponse.error
-
-      if (sessionError || !session?.user) {
-        await cerrarSesionCliente()
-        return
-      }
-
-      const user = session.user
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, email, full_name, client_type, is_active, is_approved")
-        .eq("id", user.id)
-        .maybeSingle()
-
-      if (profileError || !profile) {
-        await cerrarSesionCliente()
-        return
-      }
-
-      if (!profile.is_active || !profile.is_approved) {
-        await cerrarSesionCliente()
-        return
-      }
-
-      localStorage.setItem("cliente_email", profile.email || "")
-      localStorage.setItem("cliente_name", profile.full_name || "")
-      localStorage.setItem("cliente_tipo", profile.client_type || "")
-
-      setNombreCliente(profile.full_name || "")
-      setAutorizado(true)
-
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("id, invoice_number, invoice_date, amount_without_vat, status, file_url, file_name")
-        .eq("user_email", profile.email)
-        .order("created_at", { ascending: false })
-
-      if (error) {
-        setMensaje("Ocurrió un error al cargar las facturas.")
-        return
-      }
-
-      setFacturas((data as Factura[]) || [])
-    } catch {
-      await cerrarSesionCliente()
+    if (!email) {
+      router.replace("/login")
       return
-    } finally {
-      setCargando(false)
     }
+
+    setUserEmail(email)
+    setCargandoSesion(false)
+  }, [router])
+
+  const cargarFacturas = async (email: string) => {
+    setCargando(true)
+    setMensaje("")
+
+    const { data, error } = await supabase
+      .from("invoices")
+      .select("id, user_email, invoice_number, invoice_date, amount_without_vat, status, notes, file_url, file_name, created_at")
+      .eq("user_email", email)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      setMensaje("Ocurrió un error al cargar tus facturas.")
+      setCargando(false)
+      return
+    }
+
+    setFacturas((data as Factura[]) || [])
+    setCargando(false)
   }
 
   useEffect(() => {
-    cargarFacturas()
-  }, [router])
+    if (!cargandoSesion && userEmail) {
+      cargarFacturas(userEmail)
+    }
+  }, [cargandoSesion, userEmail])
 
   const traducirEstado = (estado: string) => {
+    if (estado === "pending") return "Pendiente"
     if (estado === "approved") return "Aprobada"
     if (estado === "rejected") return "Rechazada"
-    if (estado === "pending") return "Pendiente"
-    return estado
-  }
-
-  const descripcionEstado = (estado: string) => {
-    if (estado === "approved") return "Tu factura ya fue validada por administración."
-    if (estado === "rejected") return "Tu factura fue rechazada. Puedes reemplazarla fácilmente desde aquí."
-    if (estado === "pending") return "Tu factura está pendiente de aprobación. Puedes revisar su estado aquí."
-    return "Consulta el estado actual de tu factura."
+    return estado || "Sin estado"
   }
 
   const estadoStyles = (estado: string) => {
@@ -131,286 +99,268 @@ export default function MisFacturasPage() {
     }
   }
 
-  const refrescarPantalla = () => {
-    cargarFacturas()
-  }
+  const facturasFiltradas = useMemo(() => {
+    const texto = filtroTexto.trim().toLowerCase()
+    const estado = filtroEstado.trim().toLowerCase()
 
-  if (cargando) {
+    return facturas.filter((factura) => {
+      const coincideTexto =
+        !texto ||
+        factura.invoice_number.toLowerCase().includes(texto) ||
+        factura.invoice_date.toLowerCase().includes(texto) ||
+        (factura.file_name || "").toLowerCase().includes(texto)
+
+      const coincideEstado = !estado || factura.status.toLowerCase() === estado
+
+      return coincideTexto && coincideEstado
+    })
+  }, [facturas, filtroTexto, filtroEstado])
+
+  const totalFacturas = facturas.length
+  const totalPendientes = facturas.filter((f) => f.status === "pending").length
+  const totalAprobadas = facturas.filter((f) => f.status === "approved").length
+  const totalRechazadas = facturas.filter((f) => f.status === "rejected").length
+
+  if (cargandoSesion) {
     return (
-      <main
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "Arial, sans-serif",
-          background: "#f5f5f5",
-        }}
-      >
-        Cargando facturas...
+      <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div className="pysta-card" style={{ padding: "24px 28px" }}>
+          Validando acceso...
+        </div>
       </main>
     )
   }
 
-  if (!autorizado) {
-    return null
-  }
-
   return (
-    <>
-      <InfoPopup
-        storageKey="popup-mis-facturas"
-        title="Estado de tus facturas"
-        message="Cuando registres una factura, esta puede quedar pendiente de aprobación mientras es validada por administración. Si una factura es rechazada, puedes reemplazarla desde esta misma pantalla."
-      />
-
-      <main
-        style={{
-          minHeight: "100vh",
-          background: "linear-gradient(180deg, #f5f5f5 0%, #ececec 100%)",
-          padding: "32px 20px",
-          fontFamily: "Arial, sans-serif",
-        }}
-      >
-        <div style={{ maxWidth: "1180px", margin: "0 auto" }}>
-          <section
+    <main className="pysta-page">
+      <div className="pysta-shell" style={{ maxWidth: "1380px" }}>
+        <section
+          className="pysta-card"
+          style={{
+            padding: "30px",
+            marginBottom: "22px",
+            background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
+          }}
+        >
+          <div
             style={{
-              background: "#ffffff",
-              borderRadius: "24px",
-              padding: "28px",
-              boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
-              marginBottom: "22px",
-              border: "1px solid rgba(0,0,0,0.04)",
+              display: "flex",
+              justifyContent: "space-between",
+              gap: "14px",
+              flexWrap: "wrap",
+              alignItems: "center",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: "18px",
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-                <div
-                  style={{
-                    width: "84px",
-                    height: "84px",
-                    borderRadius: "18px",
-                    background: "#fff",
-                    border: "1px solid #e5e7eb",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    overflow: "hidden",
-                    boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
-                  }}
-                >
-                  <img
-                    src="/logo-pysta.png"
-                    alt="Pysta"
-                    style={{
-                      maxWidth: "76px",
-                      maxHeight: "76px",
-                      objectFit: "contain",
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: "grid", gap: "8px" }}>
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      width: "fit-content",
-                      padding: "6px 12px",
-                      borderRadius: "999px",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      background: "rgba(212, 175, 55, 0.14)",
-                      color: "#7a5b00",
-                      border: "1px solid rgba(212, 175, 55, 0.24)",
-                    }}
-                  >
-                    Historial de facturas
-                  </span>
-
-                  <h1 style={{ margin: 0, fontSize: "34px", color: "#111" }}>
-                    Mis facturas
-                  </h1>
-
-                  <p style={{ margin: 0, color: "#6b7280", fontSize: "15px" }}>
-                    {nombreCliente ? `Cliente: ${nombreCliente}` : "Consulta las facturas registradas en tu cuenta"}
-                  </p>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                <button
-                  onClick={refrescarPantalla}
-                  style={{
-                    background: "#e9e9e9",
-                    color: "#111",
-                    border: "none",
-                    padding: "12px 18px",
-                    borderRadius: "14px",
-                    cursor: "pointer",
-                    fontSize: "14px",
-                    fontWeight: 700,
-                  }}
-                >
-                  Refrescar
-                </button>
-
-                <LogoutButton />
-              </div>
+            <div style={{ display: "grid", gap: "10px" }}>
+              <span className="pysta-badge">Mis facturas</span>
+              <h1 className="pysta-section-title">Historial de facturas</h1>
+              <p className="pysta-subtitle">
+                Consulta el estado de tus facturas cargadas, revisa observaciones y descarga tus archivos.
+              </p>
             </div>
-          </section>
 
-          <section
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <button onClick={() => cargarFacturas(userEmail)} className="pysta-btn pysta-btn-light">
+                Refrescar
+              </button>
+
+              <Link href="/dashboard" className="pysta-btn pysta-btn-dark">
+                Volver al dashboard
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: "16px",
+            marginBottom: "22px",
+          }}
+        >
+          <ResumenCard titulo="Facturas totales" valor={String(totalFacturas)} descripcion="Registros cargados" />
+          <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="En revisión" />
+          <ResumenCard titulo="Aprobadas" valor={String(totalAprobadas)} descripcion="Validadas correctamente" />
+          <ResumenCard titulo="Rechazadas" valor={String(totalRechazadas)} descripcion="Con observaciones" />
+        </section>
+
+        <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
+          <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
+            <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
+            <p style={{ margin: 0, color: "#6b7280" }}>
+              Busca por número, fecha o archivo, y filtra por estado.
+            </p>
+          </div>
+
+          <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
               gap: "16px",
-              marginBottom: "22px",
             }}
           >
-            <ResumenCard
-              titulo="Facturas registradas"
-              valor={String(facturas.length)}
-              descripcion="Total cargadas en tu cuenta"
-            />
-            <ResumenCard
-              titulo="Facturas aprobadas"
-              valor={String(facturas.filter((f) => f.status === "approved").length)}
-              descripcion="Ya validadas por administración"
-            />
-            <ResumenCard
-              titulo="Facturas pendientes"
-              valor={String(facturas.filter((f) => f.status === "pending").length)}
-              descripcion="Aún en proceso de revisión"
-            />
-            <ResumenCard
-              titulo="Facturas rechazadas"
-              valor={String(facturas.filter((f) => f.status === "rejected").length)}
-              descripcion="Puedes reemplazarlas"
-            />
+            <div>
+              <label style={labelStyle}>Buscar</label>
+              <input
+                className="pysta-input"
+                placeholder="Número, fecha o archivo"
+                value={filtroTexto}
+                onChange={(e) => setFiltroTexto(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Estado</label>
+              <select className="pysta-select" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+                <option value="">Todos</option>
+                <option value="pending">Pendiente</option>
+                <option value="approved">Aprobada</option>
+                <option value="rejected">Rechazada</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        {mensaje ? (
+          <section className="pysta-card" style={{ padding: "18px 20px", marginBottom: "22px", color: "#991b1b" }}>
+            {mensaje}
           </section>
+        ) : null}
 
-          {mensaje ? (
-            <section style={messageCardStyle}>{mensaje}</section>
-          ) : facturas.length === 0 ? (
-            <section style={emptyCardStyle}>
-              <h2 style={{ margin: 0, fontSize: "24px", color: "#111" }}>Aún no has registrado facturas</h2>
-              <p style={{ margin: "10px 0 0 0", color: "#6b7280", lineHeight: 1.6 }}>
-                Cuando cargues tu primera factura, aparecerá aquí con su estado de revisión.
-              </p>
+        <section className="pysta-card" style={{ padding: "0", overflow: "hidden" }}>
+          <div
+            style={{
+              padding: "22px 24px",
+              borderBottom: "1px solid #e5e7eb",
+              background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Listado de facturas</h2>
+            <p style={{ margin: "6px 0 0 0", color: "#6b7280" }}>
+              Total encontradas: {facturasFiltradas.length}
+            </p>
+          </div>
 
-              <div style={{ marginTop: "20px" }}>
-                <a href="/dashboard/facturas/nueva" style={buttonGold}>
-                  Registrar nueva factura
-                </a>
-              </div>
-            </section>
+          {cargando ? (
+            <div style={{ padding: "24px", color: "#333" }}>Cargando facturas...</div>
+          ) : facturasFiltradas.length === 0 ? (
+            <div style={{ padding: "24px", color: "#333" }}>No tienes facturas para esos filtros.</div>
           ) : (
-            <section style={{ display: "grid", gap: "16px" }}>
-              {facturas.map((factura) => (
-                <article
-                  key={factura.id}
-                  style={{
-                    background: "#fff",
-                    borderRadius: "22px",
-                    padding: "22px",
-                    boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
-                    border: "1px solid rgba(0,0,0,0.04)",
-                  }}
-                >
-                  <div
+            <div style={{ padding: "18px" }}>
+              <div style={{ display: "grid", gap: "14px" }}>
+                {facturasFiltradas.map((factura) => (
+                  <article
+                    key={factura.id}
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "16px",
-                      flexWrap: "wrap",
-                      alignItems: "flex-start",
-                      marginBottom: "16px",
+                      background: "#fff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "20px",
+                      padding: "20px",
+                      boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
                     }}
                   >
-                    <div>
-                      <p style={{ margin: 0, color: "#6b7280", fontSize: "13px", fontWeight: 700 }}>
-                        FACTURA
-                      </p>
-                      <h3 style={{ margin: "6px 0 0 0", fontSize: "24px", color: "#111" }}>
-                        {factura.invoice_number}
-                      </h3>
-                    </div>
-
-                    <span
+                    <div
                       style={{
-                        ...estadoStyles(factura.status),
-                        padding: "8px 12px",
-                        borderRadius: "999px",
-                        fontSize: "13px",
-                        fontWeight: 700,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "14px",
+                        flexWrap: "wrap",
+                        marginBottom: "14px",
+                        alignItems: "flex-start",
                       }}
                     >
-                      {traducirEstado(factura.status)}
-                    </span>
-                  </div>
+                      <div style={{ display: "grid", gap: "8px" }}>
+                        <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
+                          {factura.invoice_number}
+                        </h3>
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                      gap: "14px",
-                    }}
-                  >
-                    <InfoItem label="Fecha" value={factura.invoice_date} />
-                    <InfoItem
-                      label="Valor sin IVA"
-                      value={`$${Number(factura.amount_without_vat).toLocaleString("es-CO")}`}
-                    />
-                    <InfoItem label="Estado actual" value={traducirEstado(factura.status)} />
-                    <InfoItem label="Detalle" value={descripcionEstado(factura.status)} />
-                  </div>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "6px 10px",
+                              borderRadius: "999px",
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                              ...estadoStyles(factura.status),
+                            }}
+                          >
+                            {traducirEstado(factura.status)}
+                          </span>
+                        </div>
+                      </div>
 
-                  <div style={{ marginTop: "16px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                    {factura.file_url ? (
-                      <a
-                        href={factura.file_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={buttonLight}
+                      {factura.file_url ? (
+                        <a
+                          href={factura.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="pysta-btn pysta-btn-dark"
+                          style={{ textDecoration: "none" }}
+                        >
+                          Ver archivo
+                        </a>
+                      ) : null}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                        gap: "12px",
+                      }}
+                    >
+                      <InfoItem label="Fecha factura" value={factura.invoice_date} />
+                      <InfoItem
+                        label="Valor sin IVA"
+                        value={`$${Number(factura.amount_without_vat || 0).toLocaleString("es-CO")}`}
+                      />
+                      <InfoItem label="Archivo" value={factura.file_name || "-"} />
+                      <InfoItem label="Estado actual" value={traducirEstado(factura.status)} />
+                    </div>
+
+                    {factura.status === "rejected" && factura.notes ? (
+                      <div
+                        style={{
+                          marginTop: "12px",
+                          background: "#fef2f2",
+                          border: "1px solid #fecaca",
+                          borderRadius: "14px",
+                          padding: "12px 14px",
+                        }}
                       >
-                        Ver archivo
-                      </a>
-                    ) : null}
+                        <p
+                          style={{
+                            margin: "0 0 8px 0",
+                            fontSize: "13px",
+                            color: "#991b1b",
+                            fontWeight: 700,
+                          }}
+                        >
+                          Motivo del rechazo
+                        </p>
 
-                    {factura.status === "rejected" ? (
-                      <a
-                        href={`/dashboard/facturas/nueva?edit=${factura.id}`}
-                        style={buttonGold}
-                      >
-                        Reemplazar factura rechazada
-                      </a>
+                        <p
+                          style={{
+                            margin: 0,
+                            color: "#111",
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {factura.notes}
+                        </p>
+                      </div>
                     ) : null}
-                  </div>
-                </article>
-              ))}
-            </section>
+                  </article>
+                ))}
+              </div>
+            </div>
           )}
-
-          <div style={{ marginTop: "28px", display: "flex", gap: "14px", flexWrap: "wrap" }}>
-            <a href="/dashboard/facturas/nueva" style={buttonGold}>
-              Registrar nueva factura
-            </a>
-
-            <a href="/dashboard" style={buttonDark}>
-              Volver al panel
-            </a>
-          </div>
-        </div>
-      </main>
-    </>
+        </section>
+      </div>
+    </main>
   )
 }
 
@@ -425,12 +375,10 @@ function ResumenCard({
 }) {
   return (
     <div
+      className="pysta-card"
       style={{
-        background: "#fff",
-        borderRadius: "22px",
         padding: "22px",
-        boxShadow: "0 10px 28px rgba(0,0,0,0.07)",
-        border: "1px solid rgba(0,0,0,0.04)",
+        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
       }}
     >
       <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
@@ -446,63 +394,24 @@ function InfoItem({ label, value }: { label: string; value: string }) {
       style={{
         background: "#f9fafb",
         border: "1px solid #e5e7eb",
-        borderRadius: "16px",
-        padding: "14px 16px",
+        borderRadius: "14px",
+        padding: "12px 14px",
       }}
     >
       <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
         {label}
       </p>
-      <p style={{ margin: 0, fontSize: "16px", color: "#111", lineHeight: 1.5 }}>
+      <p style={{ margin: 0, fontSize: "15px", color: "#111", lineHeight: 1.5, wordBreak: "break-word" }}>
         {value}
       </p>
     </div>
   )
 }
 
-const messageCardStyle = {
-  background: "#fff",
-  borderRadius: "22px",
-  padding: "22px",
-  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
-  border: "1px solid rgba(0,0,0,0.04)",
+const labelStyle = {
+  display: "block",
+  marginBottom: "8px",
   color: "#111",
-}
-
-const emptyCardStyle = {
-  background: "#fff",
-  borderRadius: "22px",
-  padding: "28px",
-  boxShadow: "0 12px 30px rgba(0,0,0,0.07)",
-  border: "1px solid rgba(0,0,0,0.04)",
-}
-
-const buttonDark = {
-  backgroundColor: "#111",
-  color: "white",
-  textDecoration: "none",
-  padding: "14px 24px",
-  borderRadius: "14px",
-  display: "inline-block",
   fontWeight: "bold" as const,
-}
-
-const buttonGold = {
-  backgroundColor: "#d4af37",
-  color: "#111",
-  textDecoration: "none",
-  padding: "14px 24px",
-  borderRadius: "14px",
-  display: "inline-block",
-  fontWeight: "bold" as const,
-}
-
-const buttonLight = {
-  backgroundColor: "#e9e9e9",
-  color: "#111",
-  textDecoration: "none",
-  padding: "14px 24px",
-  borderRadius: "14px",
-  display: "inline-block",
-  fontWeight: "bold" as const,
+  fontSize: "14px",
 }

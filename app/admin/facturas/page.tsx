@@ -58,6 +58,12 @@ export default function AdminFacturasPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [eliminandoFactura, setEliminandoFactura] = useState(false)
 
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [rejectMode, setRejectMode] = useState<"single" | "bulk">("single")
+  const [facturaARechazar, setFacturaARechazar] = useState<Factura | null>(null)
+  const [motivoRechazo, setMotivoRechazo] = useState("")
+  const [guardandoRechazo, setGuardandoRechazo] = useState(false)
+
   useEffect(() => {
     const validar = async () => {
       const ok = await validarAccesoAdmin(router)
@@ -212,7 +218,10 @@ export default function AdminFacturasPage() {
 
     const { error } = await supabase
       .from("invoices")
-      .update({ status: "approved" })
+      .update({
+        status: "approved",
+        notes: null,
+      })
       .eq("id", facturaId)
 
     if (error) {
@@ -226,22 +235,101 @@ export default function AdminFacturasPage() {
     cargarDatos()
   }
 
-  const rechazarFactura = async (facturaId: string) => {
+  const abrirModalRechazoIndividual = (factura: Factura) => {
+    setRejectMode("single")
+    setFacturaARechazar(factura)
+    setMotivoRechazo(factura.notes || "")
+    setRejectOpen(true)
+  }
+
+  const abrirModalRechazoMasivo = () => {
+    if (seleccionados.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("Debes seleccionar al menos una factura.")
+      return
+    }
+
+    setRejectMode("bulk")
+    setFacturaARechazar(null)
+    setMotivoRechazo("")
+    setRejectOpen(true)
+  }
+
+  const cerrarModalRechazo = () => {
+    if (guardandoRechazo) return
+    setRejectOpen(false)
+    setFacturaARechazar(null)
+    setMotivoRechazo("")
+  }
+
+  const confirmarRechazo = async () => {
+    const motivo = motivoRechazo.trim()
+
+    if (!motivo) {
+      setTipoMensaje("warning")
+      setMensaje("Debes escribir el motivo del rechazo.")
+      return
+    }
+
+    setGuardandoRechazo(true)
     setMensaje("")
+
+    if (rejectMode === "single") {
+      if (!facturaARechazar) {
+        setGuardandoRechazo(false)
+        return
+      }
+
+      const { error } = await supabase
+        .from("invoices")
+        .update({
+          status: "rejected",
+          notes: motivo,
+        })
+        .eq("id", facturaARechazar.id)
+
+      if (error) {
+        setTipoMensaje("error")
+        setMensaje("No se pudo rechazar la factura: " + error.message)
+        setGuardandoRechazo(false)
+        return
+      }
+
+      setTipoMensaje("success")
+      setMensaje("Factura rechazada correctamente con motivo guardado.")
+      setGuardandoRechazo(false)
+      cerrarModalRechazo()
+      cargarDatos()
+      return
+    }
+
+    if (seleccionados.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("Debes seleccionar al menos una factura.")
+      setGuardandoRechazo(false)
+      return
+    }
 
     const { error } = await supabase
       .from("invoices")
-      .update({ status: "rejected" })
-      .eq("id", facturaId)
+      .update({
+        status: "rejected",
+        notes: motivo,
+      })
+      .in("id", seleccionados)
 
     if (error) {
       setTipoMensaje("error")
-      setMensaje("No se pudo rechazar la factura: " + error.message)
+      setMensaje("No se pudo rechazar las facturas seleccionadas: " + error.message)
+      setGuardandoRechazo(false)
       return
     }
 
     setTipoMensaje("success")
-    setMensaje("Factura rechazada correctamente.")
+    setMensaje(`Facturas rechazadas correctamente con motivo guardado en ${seleccionados.length} registro(s).`)
+    setSeleccionados([])
+    setGuardandoRechazo(false)
+    cerrarModalRechazo()
     cargarDatos()
   }
 
@@ -292,6 +380,11 @@ export default function AdminFacturasPage() {
       return
     }
 
+    if (accion === "rejected") {
+      abrirModalRechazoMasivo()
+      return
+    }
+
     setBulkAction(accion)
     setConfirmOpen(true)
     setConfirmDanger(accion === "deleted")
@@ -299,10 +392,6 @@ export default function AdminFacturasPage() {
 
     if (accion === "approved") {
       setConfirmMessage(`¿Seguro que deseas aprobar ${seleccionados.length} factura(s)?`)
-    }
-
-    if (accion === "rejected") {
-      setConfirmMessage(`¿Seguro que deseas rechazar ${seleccionados.length} factura(s)?`)
     }
 
     if (accion === "deleted") {
@@ -338,11 +427,12 @@ export default function AdminFacturasPage() {
         return
       }
     } else {
-      const nuevoEstado = bulkAction === "approved" ? "approved" : "rejected"
-
       const { error } = await supabase
         .from("invoices")
-        .update({ status: nuevoEstado })
+        .update({
+          status: "approved",
+          notes: null,
+        })
         .in("id", seleccionados)
 
       if (error) {
@@ -550,7 +640,7 @@ export default function AdminFacturasPage() {
                   Aprobar seleccionadas
                 </button>
 
-                <button onClick={() => abrirConfirmacionMasiva("rejected")} className="pysta-btn pysta-btn-light">
+                <button onClick={abrirModalRechazoMasivo} className="pysta-btn pysta-btn-light">
                   Rechazar seleccionadas
                 </button>
 
@@ -676,7 +766,7 @@ export default function AdminFacturasPage() {
 
                             {factura.status !== "rejected" && (
                               <button
-                                onClick={() => rechazarFactura(factura.id)}
+                                onClick={() => abrirModalRechazoIndividual(factura)}
                                 className="pysta-btn pysta-btn-light"
                                 style={smallActionBtn}
                               >
@@ -780,6 +870,74 @@ export default function AdminFacturasPage() {
         onCancel={cerrarEliminarFactura}
         onConfirm={confirmarEliminarFactura}
       />
+
+      {rejectOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+        >
+          <div
+            className="pysta-card"
+            style={{
+              width: "100%",
+              maxWidth: "620px",
+              padding: "24px",
+              background: "#fff",
+              borderRadius: "20px",
+            }}
+          >
+            <div style={{ display: "grid", gap: "8px", marginBottom: "16px" }}>
+              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>
+                {rejectMode === "single" ? "Rechazar factura" : "Rechazar facturas seleccionadas"}
+              </h2>
+              <p style={{ margin: 0, color: "#6b7280", lineHeight: 1.5 }}>
+                {rejectMode === "single"
+                  ? `Escribe el motivo de rechazo para la factura ${facturaARechazar?.invoice_number || ""}.`
+                  : `Escribe el motivo de rechazo para ${seleccionados.length} factura(s).`}
+              </p>
+            </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={labelStyle}>Motivo del rechazo</label>
+              <textarea
+                className="pysta-textarea"
+                rows={6}
+                value={motivoRechazo}
+                onChange={(e) => setMotivoRechazo(e.target.value)}
+                placeholder="Ejemplo: la factura no es legible, el valor no coincide, el documento está incompleto..."
+                style={{ resize: "vertical", width: "100%" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                onClick={confirmarRechazo}
+                className="pysta-btn pysta-btn-danger"
+                disabled={guardandoRechazo}
+                style={{ opacity: guardandoRechazo ? 0.7 : 1 }}
+              >
+                {guardandoRechazo ? "Guardando..." : "Guardar rechazo"}
+              </button>
+
+              <button
+                onClick={cerrarModalRechazo}
+                className="pysta-btn pysta-btn-light"
+                disabled={guardandoRechazo}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

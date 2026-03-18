@@ -15,12 +15,23 @@ type FacturaSaldo = {
 type Redencion = {
   points_used: number
   created_at: string
+  status?: string | null
 }
 
 type SettingsRow = {
   redemption_percentage: number
   points_expiration_enabled: boolean
   points_expiration_months: number
+}
+
+type InvoiceStatusRow = {
+  id: string
+  status: string | null
+}
+
+type RedemptionStatusRow = {
+  id: string
+  status: string | null
 }
 
 export default function DashboardPage() {
@@ -32,6 +43,11 @@ export default function DashboardPage() {
   const [puntosDisponibles, setPuntosDisponibles] = useState(0)
   const [puntosRedimidos, setPuntosRedimidos] = useState(0)
   const [cargando, setCargando] = useState(true)
+
+  const [facturasPendientes, setFacturasPendientes] = useState(0)
+  const [facturasRechazadas, setFacturasRechazadas] = useState(0)
+  const [redencionesPendientes, setRedencionesPendientes] = useState(0)
+  const [redencionesCanceladas, setRedencionesCanceladas] = useState(0)
 
   useEffect(() => {
     const validarYCargar = async () => {
@@ -130,7 +146,7 @@ export default function DashboardPage() {
 
         const { data: redencionesData } = await supabase
           .from("redemptions")
-          .select("points_used, created_at")
+          .select("points_used, created_at, status")
           .eq("user_email", email)
           .neq("status", "cancelled")
 
@@ -141,6 +157,32 @@ export default function DashboardPage() {
             return acum + Number(redencion.points_used || 0)
           }, 0)
         }
+
+        const { data: facturasEstadoData } = await supabase
+          .from("invoices")
+          .select("id, status")
+          .eq("user_email", email)
+
+        const { data: redencionesEstadoData } = await supabase
+          .from("redemptions")
+          .select("id, status")
+          .eq("user_email", email)
+
+        const facturasEstado = (facturasEstadoData as InvoiceStatusRow[]) || []
+        const redencionesEstado = (redencionesEstadoData as RedemptionStatusRow[]) || []
+
+        setFacturasPendientes(
+          facturasEstado.filter((factura) => (factura.status || "") === "pending").length
+        )
+        setFacturasRechazadas(
+          facturasEstado.filter((factura) => (factura.status || "") === "rejected").length
+        )
+        setRedencionesPendientes(
+          redencionesEstado.filter((redencion) => (redencion.status || "") === "requested").length
+        )
+        setRedencionesCanceladas(
+          redencionesEstado.filter((redencion) => (redencion.status || "") === "cancelled").length
+        )
 
         setPuntosRedimidos(totalRedimido)
         setPuntosDisponibles(Math.max(acumulados - totalRedimido, 0))
@@ -321,6 +363,36 @@ export default function DashboardPage() {
               titulo="Puntos redimidos"
               valor={String(puntosRedimidos)}
               descripcion="Total de puntos ya usados"
+            />
+          </section>
+
+          <section
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
+            <ResumenCard
+              titulo="Facturas pendientes"
+              valor={String(facturasPendientes)}
+              descripcion="Pendientes por revisión"
+            />
+            <ResumenCard
+              titulo="Facturas rechazadas"
+              valor={String(facturasRechazadas)}
+              descripcion="Con observaciones"
+            />
+            <ResumenCard
+              titulo="Redenciones pendientes"
+              valor={String(redencionesPendientes)}
+              descripcion="Solicitudes en proceso"
+            />
+            <ResumenCard
+              titulo="Redenciones canceladas"
+              valor={String(redencionesCanceladas)}
+              descripcion="Con nota administrativa"
             />
           </section>
 

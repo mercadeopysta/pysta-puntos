@@ -18,6 +18,7 @@ type Redencion = {
   status: string | null
   created_at: string | null
   redemption_group_id: string | null
+  admin_note?: string | null
 }
 
 type ProfileRow = {
@@ -33,6 +34,7 @@ type GrupoItem = {
   reward_name: string
   points_used: number
   status: string
+  admin_note?: string
 }
 
 type GrupoRedencion = {
@@ -47,6 +49,7 @@ type GrupoRedencion = {
   customer_name: string
   document_number: string
   advisor_name: string
+  admin_note: string
 }
 
 type BulkAction = "approved" | "shipped" | "delivered" | "cancelled" | ""
@@ -77,6 +80,12 @@ export default function AdminRedencionesPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [eliminandoGrupo, setEliminandoGrupo] = useState(false)
 
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelMode, setCancelMode] = useState<"single" | "bulk">("single")
+  const [grupoACancelar, setGrupoACancelar] = useState<GrupoRedencion | null>(null)
+  const [motivoCancelacion, setMotivoCancelacion] = useState("")
+  const [guardandoCancelacion, setGuardandoCancelacion] = useState(false)
+
   useEffect(() => {
     const validar = async () => {
       const ok = await validarAccesoAdmin(router)
@@ -95,7 +104,7 @@ export default function AdminRedencionesPage() {
     try {
       const { data: redencionesData, error: redencionesError } = await supabase
         .from("redemptions")
-        .select("id, user_email, reward_id, reward_name, points_used, status, created_at, redemption_group_id")
+        .select("id, user_email, reward_id, reward_name, points_used, status, created_at, redemption_group_id, admin_note")
         .order("created_at", { ascending: false })
 
       if (redencionesError) {
@@ -114,6 +123,7 @@ export default function AdminRedencionesPage() {
         status: String(r.status || "requested"),
         created_at: r.created_at || new Date().toISOString(),
         redemption_group_id: r.redemption_group_id || null,
+        admin_note: r.admin_note || "",
       }))
 
       setRedenciones(redencionesRows)
@@ -212,11 +222,11 @@ export default function AdminRedencionesPage() {
           customer_name: perfil?.full_name || "",
           document_number: perfil?.document_number || "",
           advisor_name: perfil?.advisor_name || "",
+          admin_note: redencion.admin_note || "",
         })
       }
 
       const current = grouped.get(groupId)
-
       if (!current) return
 
       current.items.push({
@@ -225,12 +235,17 @@ export default function AdminRedencionesPage() {
         reward_name: redencion.reward_name || "Premio sin nombre",
         points_used: Number(redencion.points_used || 0),
         status: redencion.status || "requested",
+        admin_note: redencion.admin_note || "",
       })
 
       current.points_total += Number(redencion.points_used || 0)
 
       if (current.status !== (redencion.status || "requested")) {
         current.status = "mixed"
+      }
+
+      if (!current.admin_note && redencion.admin_note) {
+        current.admin_note = redencion.admin_note
       }
     })
 
@@ -262,6 +277,7 @@ export default function AdminRedencionesPage() {
         (grupo.customer_name || "").toLowerCase().includes(texto) ||
         (grupo.document_number || "").toLowerCase().includes(texto) ||
         (grupo.advisor_name || "").toLowerCase().includes(texto) ||
+        (grupo.admin_note || "").toLowerCase().includes(texto) ||
         premiosTexto.includes(texto)
 
       const coincideEstado = !estado || (grupo.status || "").toLowerCase() === estado
@@ -356,17 +372,34 @@ export default function AdminRedencionesPage() {
     cargarDatos()
   }
 
-  const cancelarGrupoYDevolverStock = async (grupo: GrupoRedencion) => {
-    setMensaje("")
+  const abrirModalCancelacionIndividual = (grupo: GrupoRedencion) => {
+    setCancelMode("single")
+    setGrupoACancelar(grupo)
+    setMotivoCancelacion(grupo.admin_note || "")
+    setCancelOpen(true)
+  }
 
-    const ids = (grupo.items || []).map((item) => item.id).filter(Boolean)
-
-    if (ids.length === 0) {
+  const abrirModalCancelacionMasiva = () => {
+    if (seleccionados.length === 0) {
       setTipoMensaje("warning")
-      setMensaje("La solicitud no tiene ítems válidos para cancelar.")
+      setMensaje("Debes seleccionar al menos una solicitud.")
       return
     }
 
+    setCancelMode("bulk")
+    setGrupoACancelar(null)
+    setMotivoCancelacion("")
+    setCancelOpen(true)
+  }
+
+  const cerrarModalCancelacion = () => {
+    if (guardandoCancelacion) return
+    setCancelOpen(false)
+    setGrupoACancelar(null)
+    setMotivoCancelacion("")
+  }
+
+  const devolverStockDeGrupo = async (grupo: GrupoRedencion) => {
     for (const item of grupo.items || []) {
       if (!item.reward_id) continue
 
@@ -384,26 +417,113 @@ export default function AdminRedencionesPage() {
         .eq("id", item.reward_id)
 
       if (rewardError) {
-        setTipoMensaje("error")
-        setMensaje("No se pudo devolver el stock de uno de los premios.")
-        return
+        throw new Error("No se pudo devolver el stock de uno de los premios.")
       }
     }
+  }
 
-    const { error } = await supabase
-      .from("redemptions")
-      .update({ status: "cancelled" })
-      .in("id", ids)
+  const confirmarCancelacion = async () => {
+    const motivo = motivoCancelacion.trim()
 
-    if (error) {
-      setTipoMensaje("error")
-      setMensaje("No se pudo cancelar la solicitud: " + error.message)
+    if (!motivo) {
+      setTipoMensaje("warning")
+      setMensaje("Debes escribir el motivo de la cancelación.")
       return
     }
 
-    setTipoMensaje("success")
-    setMensaje("Solicitud cancelada correctamente y stock devuelto.")
-    cargarDatos()
+    setGuardandoCancelacion(true)
+    setMensaje("")
+
+    try {
+      if (cancelMode === "single") {
+        if (!grupoACancelar) {
+          setGuardandoCancelacion(false)
+          return
+        }
+
+        const ids = (grupoACancelar.items || []).map((item) => item.id).filter(Boolean)
+
+        if (ids.length === 0) {
+          setTipoMensaje("warning")
+          setMensaje("La solicitud no tiene ítems válidos para cancelar.")
+          setGuardandoCancelacion(false)
+          return
+        }
+
+        await devolverStockDeGrupo(grupoACancelar)
+
+        const { error } = await supabase
+          .from("redemptions")
+          .update({
+            status: "cancelled",
+            admin_note: motivo,
+          })
+          .in("id", ids)
+
+        if (error) {
+          setTipoMensaje("error")
+          setMensaje("No se pudo cancelar la solicitud: " + error.message)
+          setGuardandoCancelacion(false)
+          return
+        }
+
+        setTipoMensaje("success")
+        setMensaje("Solicitud cancelada correctamente con motivo guardado.")
+        setGuardandoCancelacion(false)
+        cerrarModalCancelacion()
+        cargarDatos()
+        return
+      }
+
+      const gruposSeleccionados = grupos.filter((g) => seleccionados.includes(g.group_id))
+
+      if (gruposSeleccionados.length === 0) {
+        setTipoMensaje("warning")
+        setMensaje("No hay solicitudes válidas para cancelar.")
+        setGuardandoCancelacion(false)
+        return
+      }
+
+      for (const grupo of gruposSeleccionados) {
+        await devolverStockDeGrupo(grupo)
+      }
+
+      const ids = gruposSeleccionados.flatMap((grupo) => (grupo.items || []).map((item) => item.id)).filter(Boolean)
+
+      if (ids.length === 0) {
+        setTipoMensaje("warning")
+        setMensaje("No hay ítems válidos para la cancelación.")
+        setGuardandoCancelacion(false)
+        return
+      }
+
+      const { error } = await supabase
+        .from("redemptions")
+        .update({
+          status: "cancelled",
+          admin_note: motivo,
+        })
+        .in("id", ids)
+
+      if (error) {
+        setTipoMensaje("error")
+        setMensaje("No se pudo cancelar las solicitudes seleccionadas: " + error.message)
+        setGuardandoCancelacion(false)
+        return
+      }
+
+      setTipoMensaje("success")
+      setMensaje(`Solicitudes canceladas correctamente con motivo guardado en ${seleccionados.length} registro(s).`)
+      setSeleccionados([])
+      setGuardandoCancelacion(false)
+      cerrarModalCancelacion()
+      cargarDatos()
+    } catch (error) {
+      const texto = error instanceof Error ? error.message : "Error inesperado al cancelar."
+      setTipoMensaje("error")
+      setMensaje(texto)
+      setGuardandoCancelacion(false)
+    }
   }
 
   const pedirEliminarGrupo = (grupo: GrupoRedencion) => {
@@ -462,9 +582,14 @@ export default function AdminRedencionesPage() {
       return
     }
 
+    if (accion === "cancelled") {
+      abrirModalCancelacionMasiva()
+      return
+    }
+
     setBulkAction(accion)
     setConfirmOpen(true)
-    setConfirmDanger(accion === "cancelled")
+    setConfirmDanger(false)
     setConfirmTitle("Confirmar acción masiva")
     setConfirmMessage(`¿Seguro que deseas cambiar ${seleccionados.length} solicitud(es) a ${traducirEstado(accion)}?`)
   }
@@ -485,35 +610,6 @@ export default function AdminRedencionesPage() {
     setMensaje("")
 
     const gruposSeleccionados = grupos.filter((g) => seleccionados.includes(g.group_id))
-
-    if (bulkAction === "cancelled") {
-      for (const grupo of gruposSeleccionados) {
-        for (const item of grupo.items || []) {
-          if (!item.reward_id) continue
-
-          const { data: rewardData } = await supabase
-            .from("rewards")
-            .select("stock")
-            .eq("id", item.reward_id)
-            .maybeSingle()
-
-          const stockActual = Number(rewardData?.stock || 0)
-
-          const { error: rewardError } = await supabase
-            .from("rewards")
-            .update({ stock: stockActual + 1 })
-            .eq("id", item.reward_id)
-
-          if (rewardError) {
-            setTipoMensaje("error")
-            setMensaje("No se pudo devolver el stock en la acción masiva.")
-            setEjecutandoMasivo(false)
-            return
-          }
-        }
-      }
-    }
-
     const ids = gruposSeleccionados.flatMap((grupo) => (grupo.items || []).map((item) => item.id)).filter(Boolean)
 
     if (ids.length === 0) {
@@ -562,6 +658,7 @@ export default function AdminRedencionesPage() {
       premios: resumirPremios(grupo.items || []).join(" | "),
       puntos_usados: String(grupo.points_total || 0),
       estado: traducirEstado(grupo.status),
+      nota_admin: grupo.admin_note || "",
     }))
 
     const encabezados = Object.keys(filas[0])
@@ -655,7 +752,7 @@ export default function AdminRedencionesPage() {
             <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
               <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
               <p style={{ margin: 0, color: "#6b7280" }}>
-                Busca por ID de solicitud, correo, cliente, documento, asesor o premios.
+                Busca por ID de solicitud, correo, cliente, documento, asesor, premios o nota admin.
               </p>
             </div>
 
@@ -671,7 +768,7 @@ export default function AdminRedencionesPage() {
                 <label style={labelStyle}>Buscar</label>
                 <input
                   className="pysta-input"
-                  placeholder="Solicitud, correo, cliente, documento, asesor o premio"
+                  placeholder="Solicitud, correo, cliente, documento, asesor, premio o nota"
                   value={filtroTexto}
                   onChange={(e) => setFiltroTexto(e.target.value)}
                 />
@@ -738,7 +835,7 @@ export default function AdminRedencionesPage() {
                   Marcar entregadas
                 </button>
 
-                <button onClick={() => abrirConfirmacionMasiva("cancelled")} className="pysta-btn pysta-btn-danger">
+                <button onClick={abrirModalCancelacionMasiva} className="pysta-btn pysta-btn-danger">
                   Cancelar seleccionadas
                 </button>
               </div>
@@ -879,7 +976,7 @@ export default function AdminRedencionesPage() {
 
                             {grupo.status !== "cancelled" && (
                               <button
-                                onClick={() => cancelarGrupoYDevolverStock(grupo)}
+                                onClick={() => abrirModalCancelacionIndividual(grupo)}
                                 className="pysta-btn pysta-btn-danger"
                                 style={smallActionBtn}
                               >
@@ -914,6 +1011,23 @@ export default function AdminRedencionesPage() {
                           <InfoItem label="Estado actual" value={traducirEstado(grupo.status)} />
                           <InfoItem label="Detalle" value={descripcionEstado(grupo.status)} />
                         </div>
+
+                        {grupo.admin_note ? (
+                          <div
+                            style={{
+                              marginTop: "12px",
+                              background: "#f9fafb",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: "14px",
+                              padding: "12px 14px",
+                            }}
+                          >
+                            <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
+                              Nota administrativa
+                            </p>
+                            <p style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>{grupo.admin_note}</p>
+                          </div>
+                        ) : null}
 
                         <div
                           style={{
@@ -973,6 +1087,74 @@ export default function AdminRedencionesPage() {
         onCancel={cerrarEliminarGrupo}
         onConfirm={confirmarEliminarGrupo}
       />
+
+      {cancelOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+        >
+          <div
+            className="pysta-card"
+            style={{
+              width: "100%",
+              maxWidth: "620px",
+              padding: "24px",
+              background: "#fff",
+              borderRadius: "20px",
+            }}
+          >
+            <div style={{ display: "grid", gap: "8px", marginBottom: "16px" }}>
+              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>
+                {cancelMode === "single" ? "Cancelar solicitud" : "Cancelar solicitudes seleccionadas"}
+              </h2>
+              <p style={{ margin: 0, color: "#6b7280", lineHeight: 1.5 }}>
+                {cancelMode === "single"
+                  ? `Escribe el motivo de cancelación para la solicitud ${grupoACancelar?.group_id || ""}.`
+                  : `Escribe el motivo de cancelación para ${seleccionados.length} solicitud(es).`}
+              </p>
+            </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={labelStyle}>Motivo de cancelación</label>
+              <textarea
+                className="pysta-textarea"
+                rows={6}
+                value={motivoCancelacion}
+                onChange={(e) => setMotivoCancelacion(e.target.value)}
+                placeholder="Ejemplo: premio sin disponibilidad, error en la solicitud, validación interna..."
+                style={{ resize: "vertical", width: "100%" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <button
+                onClick={confirmarCancelacion}
+                className="pysta-btn pysta-btn-danger"
+                disabled={guardandoCancelacion}
+                style={{ opacity: guardandoCancelacion ? 0.7 : 1 }}
+              >
+                {guardandoCancelacion ? "Guardando..." : "Guardar cancelación"}
+              </button>
+
+              <button
+                onClick={cerrarModalCancelacion}
+                className="pysta-btn pysta-btn-light"
+                disabled={guardandoCancelacion}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
