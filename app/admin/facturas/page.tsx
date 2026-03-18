@@ -31,11 +31,6 @@ type ProfileRow = {
 
 type BulkAction = "approved" | "rejected" | "deleted" | ""
 
-type AdminLookupRow = {
-  id: string
-  email: string
-}
-
 export default function AdminFacturasPage() {
   const router = useRouter()
 
@@ -62,55 +57,15 @@ export default function AdminFacturasPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [eliminandoFactura, setEliminandoFactura] = useState(false)
 
-  const limpiarSesionAdmin = () => {
-    localStorage.removeItem("admin_logged_in")
-    localStorage.removeItem("admin_email")
-    localStorage.removeItem("admin_nombre")
-    localStorage.removeItem("admin_login_at")
-    localStorage.removeItem("admin_session_expires_at")
-  }
-
   useEffect(() => {
-    const validarAccesoAdmin = async () => {
-      const adminLogueado = localStorage.getItem("admin_logged_in")
-      const adminEmail = (localStorage.getItem("admin_email") || "").trim().toLowerCase()
-      const adminExpira = localStorage.getItem("admin_session_expires_at")
+    const adminLogueado = localStorage.getItem("admin_logged_in")
 
-      if (adminLogueado !== "true" || !adminEmail || !adminExpira) {
-        limpiarSesionAdmin()
-        router.replace("/admin/login")
-        return
-      }
-
-      const ahora = new Date()
-      const expiracion = new Date(adminExpira)
-
-      if (Number.isNaN(expiracion.getTime()) || expiracion < ahora) {
-        limpiarSesionAdmin()
-        router.replace("/admin/login")
-        return
-      }
-
-      const { data, error } = await supabase
-        .from("admin_users")
-        .select("id, email")
-        .eq("email", adminEmail)
-        .maybeSingle()
-
-      if (error || !data) {
-        limpiarSesionAdmin()
-        router.replace("/admin/login")
-        return
-      }
-
-      const admin = data as AdminLookupRow
-      localStorage.setItem("admin_email", admin.email || adminEmail)
-      localStorage.setItem("admin_nombre", admin.email || "Administrador")
-
-      setAutorizado(true)
+    if (adminLogueado !== "true") {
+      router.push("/admin/login")
+      return
     }
 
-    validarAccesoAdmin()
+    setAutorizado(true)
   }, [router])
 
   const cargarDatos = async () => {
@@ -129,49 +84,26 @@ export default function AdminFacturasPage() {
       return
     }
 
-    const rows = ((facturasData as Factura[]) || []).map((factura) => ({
-      id: String(factura.id || ""),
-      user_email: String(factura.user_email || ""),
-      invoice_number: String(factura.invoice_number || ""),
-      invoice_date: String(factura.invoice_date || ""),
-      amount_without_vat: Number(factura.amount_without_vat || 0),
-      status: String(factura.status || "pending"),
-      notes: factura.notes || "",
-      file_url: factura.file_url || null,
-      file_name: factura.file_name || null,
-      created_at: String(factura.created_at || ""),
-    }))
+    const facturasRows = (facturasData as Factura[]) || []
+    setFacturas(facturasRows)
 
-    setFacturas(rows)
-
-    const correos = Array.from(new Set(rows.map((f) => f.user_email).filter(Boolean)))
+    const correos = Array.from(new Set(facturasRows.map((f) => f.user_email).filter(Boolean)))
 
     if (correos.length > 0) {
-      const { data: perfilesData, error: perfilesError } = await supabase
+      const { data: perfilesData } = await supabase
         .from("profiles")
         .select("email, full_name, document_number, advisor_name, client_type")
         .in("email", correos)
 
-      if (perfilesError) {
-        console.error("Error cargando perfiles para facturas:", perfilesError)
-        setProfilesMap({})
-      } else {
-        const mapa: Record<string, ProfileRow> = {}
+      const mapa: Record<string, ProfileRow> = {}
 
-        ;((perfilesData as ProfileRow[]) || []).forEach((perfil) => {
-          if (perfil?.email) {
-            mapa[perfil.email] = {
-              email: perfil.email,
-              full_name: perfil.full_name || "",
-              document_number: perfil.document_number || "",
-              advisor_name: perfil.advisor_name || "",
-              client_type: perfil.client_type || "",
-            }
-          }
-        })
+      ;((perfilesData as ProfileRow[]) || []).forEach((perfil) => {
+        if (perfil.email) {
+          mapa[perfil.email] = perfil
+        }
+      })
 
-        setProfilesMap(mapa)
-      }
+      setProfilesMap(mapa)
     } else {
       setProfilesMap({})
     }
@@ -185,66 +117,18 @@ export default function AdminFacturasPage() {
     }
   }, [autorizado])
 
-  const traducirEstado = (status: string) => {
-    if (status === "pending") return "Pendiente"
-    if (status === "approved") return "Aprobada"
-    if (status === "rejected") return "Rechazada"
-    return status || "Sin estado"
+  const traducirEstado = (estado: string) => {
+    if (estado === "approved") return "Aprobada"
+    if (estado === "rejected") return "Rechazada"
+    if (estado === "pending") return "Pendiente"
+    return estado
   }
 
-  const descripcionEstado = (status: string) => {
-    if (status === "pending") return "Pendiente de revisión por administración."
-    if (status === "approved") return "Factura aprobada correctamente."
-    if (status === "rejected") return "Factura rechazada."
+  const descripcionEstado = (estado: string) => {
+    if (estado === "approved") return "Factura validada correctamente."
+    if (estado === "rejected") return "Factura rechazada."
+    if (estado === "pending") return "Pendiente de revisión."
     return "Estado actual de la factura."
-  }
-
-  const facturasFiltradas = useMemo(() => {
-    const texto = filtroTexto.trim().toLowerCase()
-    const estado = filtroEstado.trim().toLowerCase()
-
-    return facturas.filter((factura) => {
-      const perfil = profilesMap[factura.user_email]
-
-      const coincideTexto =
-        !texto ||
-        (factura.invoice_number || "").toLowerCase().includes(texto) ||
-        (factura.user_email || "").toLowerCase().includes(texto) ||
-        (perfil?.full_name || "").toLowerCase().includes(texto) ||
-        (perfil?.document_number || "").toLowerCase().includes(texto) ||
-        (perfil?.advisor_name || "").toLowerCase().includes(texto) ||
-        (perfil?.client_type || "").toLowerCase().includes(texto) ||
-        (factura.file_name || "").toLowerCase().includes(texto)
-
-      const coincideEstado = !estado || (factura.status || "").toLowerCase() === estado
-
-      return coincideTexto && coincideEstado
-    })
-  }, [facturas, profilesMap, filtroTexto, filtroEstado])
-
-  const totalFacturas = facturas.length
-  const totalPendientes = facturas.filter((f) => f.status === "pending").length
-  const totalAprobadas = facturas.filter((f) => f.status === "approved").length
-  const totalRechazadas = facturas.filter((f) => f.status === "rejected").length
-  const totalValor = facturas.reduce((acc, factura) => acc + Number(factura.amount_without_vat || 0), 0)
-
-  const idsVisibles = facturasFiltradas.map((f) => f.id)
-  const todosVisiblesSeleccionados =
-    idsVisibles.length > 0 && idsVisibles.every((id) => seleccionados.includes(id))
-
-  const toggleSeleccion = (facturaId: string) => {
-    setSeleccionados((prev) =>
-      prev.includes(facturaId) ? prev.filter((id) => id !== facturaId) : [...prev, facturaId]
-    )
-  }
-
-  const toggleSeleccionarTodosVisibles = () => {
-    if (todosVisiblesSeleccionados) {
-      setSeleccionados((prev) => prev.filter((id) => !idsVisibles.includes(id)))
-      return
-    }
-
-    setSeleccionados((prev) => Array.from(new Set([...prev, ...idsVisibles])))
   }
 
   const estadoStyles = (estado: string) => {
@@ -269,6 +153,52 @@ export default function AdminFacturasPage() {
       color: "#9a3412",
       border: "1px solid #fed7aa",
     }
+  }
+
+  const facturasFiltradas = useMemo(() => {
+    const texto = filtroTexto.trim().toLowerCase()
+    const estado = filtroEstado.trim().toLowerCase()
+
+    return facturas.filter((factura) => {
+      const perfil = profilesMap[factura.user_email]
+
+      const coincideTexto =
+        !texto ||
+        factura.invoice_number.toLowerCase().includes(texto) ||
+        factura.user_email.toLowerCase().includes(texto) ||
+        (perfil?.full_name || "").toLowerCase().includes(texto) ||
+        (perfil?.document_number || "").toLowerCase().includes(texto) ||
+        (perfil?.advisor_name || "").toLowerCase().includes(texto) ||
+        (perfil?.client_type || "").toLowerCase().includes(texto)
+
+      const coincideEstado = !estado || factura.status.toLowerCase() === estado
+
+      return coincideTexto && coincideEstado
+    })
+  }, [facturas, profilesMap, filtroTexto, filtroEstado])
+
+  const totalFacturas = facturas.length
+  const totalPendientes = facturas.filter((f) => f.status === "pending").length
+  const totalAprobadas = facturas.filter((f) => f.status === "approved").length
+  const totalRechazadas = facturas.filter((f) => f.status === "rejected").length
+
+  const idsVisibles = facturasFiltradas.map((f) => f.id)
+  const todosVisiblesSeleccionados =
+    idsVisibles.length > 0 && idsVisibles.every((id) => seleccionados.includes(id))
+
+  const toggleSeleccion = (facturaId: string) => {
+    setSeleccionados((prev) =>
+      prev.includes(facturaId) ? prev.filter((id) => id !== facturaId) : [...prev, facturaId]
+    )
+  }
+
+  const toggleSeleccionarTodosVisibles = () => {
+    if (todosVisiblesSeleccionados) {
+      setSeleccionados((prev) => prev.filter((id) => !idsVisibles.includes(id)))
+      return
+    }
+
+    setSeleccionados((prev) => Array.from(new Set([...prev, ...idsVisibles])))
   }
 
   const aprobarFactura = async (facturaId: string) => {
@@ -510,7 +440,7 @@ export default function AdminFacturasPage() {
                 <span className="pysta-badge">Gestión de facturas</span>
                 <h1 className="pysta-section-title">Administrar facturas</h1>
                 <p className="pysta-subtitle">
-                  Revisa, aprueba, rechaza, elimina y exporta las facturas cargadas por los clientes.
+                  Revisa, filtra, aprueba, rechaza, elimina y exporta facturas filtradas a CSV.
                 </p>
               </div>
 
@@ -532,22 +462,17 @@ export default function AdminFacturasPage() {
               marginBottom: "22px",
             }}
           >
-            <ResumenCard titulo="Facturas totales" valor={String(totalFacturas)} descripcion="Registros encontrados" />
+            <ResumenCard titulo="Facturas totales" valor={String(totalFacturas)} descripcion="Registros cargados" />
             <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="Por revisar" />
-            <ResumenCard titulo="Aprobadas" valor={String(totalAprobadas)} descripcion="Ya validadas" />
+            <ResumenCard titulo="Aprobadas" valor={String(totalAprobadas)} descripcion="Validadas" />
             <ResumenCard titulo="Rechazadas" valor={String(totalRechazadas)} descripcion="No aprobadas" />
-            <ResumenCard
-              titulo="Valor total sin IVA"
-              valor={`$${totalValor.toLocaleString("es-CO")}`}
-              descripcion="Suma acumulada"
-            />
           </section>
 
           <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
             <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
               <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
               <p style={{ margin: 0, color: "#6b7280" }}>
-                Busca por número de factura, correo, cliente, documento, asesor, tipo de cliente o archivo.
+                Busca por número de factura, correo, cliente, documento, asesor o tipo de cliente.
               </p>
             </div>
 
@@ -563,7 +488,7 @@ export default function AdminFacturasPage() {
                 <label style={labelStyle}>Buscar</label>
                 <input
                   className="pysta-input"
-                  placeholder="Factura, correo, cliente, documento, asesor o archivo"
+                  placeholder="Factura, correo, cliente, documento, asesor o tipo"
                   value={filtroTexto}
                   onChange={(e) => setFiltroTexto(e.target.value)}
                 />
@@ -711,7 +636,7 @@ export default function AdminFacturasPage() {
 
                             <div style={{ display: "grid", gap: "8px" }}>
                               <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
-                                Factura #{factura.invoice_number || "Sin número"}
+                                {factura.invoice_number}
                               </h3>
 
                               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -753,7 +678,7 @@ export default function AdminFacturasPage() {
                               </button>
                             )}
 
-                            {factura.file_url ? (
+                            {factura.file_url && (
                               <a
                                 href={factura.file_url}
                                 target="_blank"
@@ -763,7 +688,7 @@ export default function AdminFacturasPage() {
                               >
                                 Ver archivo
                               </a>
-                            ) : null}
+                            )}
 
                             <button
                               onClick={() => pedirEliminarFactura(factura)}
@@ -782,22 +707,36 @@ export default function AdminFacturasPage() {
                             gap: "12px",
                           }}
                         >
-                          <InfoItem label="Número de factura" value={factura.invoice_number || "-"} />
-                          <InfoItem label="Fecha factura" value={factura.invoice_date || "-"} />
-                          <InfoItem label="Correo" value={factura.user_email || "-"} />
-                          <InfoItem label="Cliente" value={perfil?.full_name || "-"} />
-                          <InfoItem label="Documento" value={perfil?.document_number || "-"} />
-                          <InfoItem label="Asesor" value={perfil?.advisor_name || "-"} />
-                          <InfoItem label="Tipo de cliente" value={perfil?.client_type || "-"} />
+                          <InfoItem label="Fecha factura" value={factura.invoice_date} />
                           <InfoItem
                             label="Valor sin IVA"
                             value={`$${Number(factura.amount_without_vat || 0).toLocaleString("es-CO")}`}
                           />
+                          <InfoItem label="Correo" value={factura.user_email} />
+                          <InfoItem label="Cliente" value={perfil?.full_name || "-"} />
+                          <InfoItem label="Documento" value={perfil?.document_number || "-"} />
+                          <InfoItem label="Asesor" value={perfil?.advisor_name || "-"} />
+                          <InfoItem label="Tipo de cliente" value={perfil?.client_type || "-"} />
                           <InfoItem label="Estado actual" value={traducirEstado(factura.status)} />
                           <InfoItem label="Detalle" value={descripcionEstado(factura.status)} />
-                          <InfoItem label="Archivo" value={factura.file_name || "-"} />
-                          <InfoItem label="Observaciones" value={factura.notes || "-"} />
                         </div>
+
+                        {factura.notes ? (
+                          <div
+                            style={{
+                              marginTop: "12px",
+                              background: "#f9fafb",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: "14px",
+                              padding: "12px 14px",
+                            }}
+                          >
+                            <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
+                              Observaciones
+                            </p>
+                            <p style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>{factura.notes}</p>
+                          </div>
+                        ) : null}
                       </article>
                     )
                   })}
@@ -825,7 +764,7 @@ export default function AdminFacturasPage() {
         title="Eliminar factura"
         message={
           facturaAEliminar
-            ? `¿Seguro que deseas eliminar completamente la factura ${facturaAEliminar.invoice_number}? Esta acción no se puede deshacer.`
+            ? `¿Seguro que deseas eliminar la factura ${facturaAEliminar.invoice_number}? Esta acción no se puede deshacer.`
             : ""
         }
         confirmText="Sí, eliminar"

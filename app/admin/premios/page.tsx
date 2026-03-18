@@ -20,11 +20,6 @@ type Premio = {
   max_monthly_per_user: number
 }
 
-type AdminLookupRow = {
-  id: string
-  email: string
-}
-
 export default function AdminPremiosPage() {
   const router = useRouter()
 
@@ -49,55 +44,15 @@ export default function AdminPremiosPage() {
   const [premioAEliminar, setPremioAEliminar] = useState<Premio | null>(null)
   const [eliminando, setEliminando] = useState(false)
 
-  const limpiarSesionAdmin = () => {
-    localStorage.removeItem("admin_logged_in")
-    localStorage.removeItem("admin_email")
-    localStorage.removeItem("admin_nombre")
-    localStorage.removeItem("admin_login_at")
-    localStorage.removeItem("admin_session_expires_at")
-  }
-
   useEffect(() => {
-    const validarAccesoAdmin = async () => {
-      const adminLogueado = localStorage.getItem("admin_logged_in")
-      const adminEmail = (localStorage.getItem("admin_email") || "").trim().toLowerCase()
-      const adminExpira = localStorage.getItem("admin_session_expires_at")
+    const adminLogueado = localStorage.getItem("admin_logged_in")
 
-      if (adminLogueado !== "true" || !adminEmail || !adminExpira) {
-        limpiarSesionAdmin()
-        router.replace("/admin/login")
-        return
-      }
-
-      const ahora = new Date()
-      const expiracion = new Date(adminExpira)
-
-      if (Number.isNaN(expiracion.getTime()) || expiracion < ahora) {
-        limpiarSesionAdmin()
-        router.replace("/admin/login")
-        return
-      }
-
-      const { data, error } = await supabase
-        .from("admin_users")
-        .select("id, email")
-        .eq("email", adminEmail)
-        .maybeSingle()
-
-      if (error || !data) {
-        limpiarSesionAdmin()
-        router.replace("/admin/login")
-        return
-      }
-
-      const admin = data as AdminLookupRow
-      localStorage.setItem("admin_email", admin.email || adminEmail)
-      localStorage.setItem("admin_nombre", admin.email || "Administrador")
-
-      setAutorizado(true)
+    if (adminLogueado !== "true") {
+      router.push("/admin/login")
+      return
     }
 
-    validarAccesoAdmin()
+    setAutorizado(true)
   }, [router])
 
   const cargarPremios = async () => {
@@ -905,7 +860,7 @@ const miniBadge = {
   border: "1px solid rgba(212, 175, 55, 0.24)",
 }
 
-const badgeAgotado = {
+const badgeCritico = {
   display: "inline-flex",
   alignItems: "center",
   padding: "6px 10px",
@@ -917,7 +872,7 @@ const badgeAgotado = {
   border: "1px solid #fecaca",
 }
 
-const badgeCritico = {
+const badgeBajo = {
   display: "inline-flex",
   alignItems: "center",
   padding: "6px 10px",
@@ -929,16 +884,16 @@ const badgeCritico = {
   border: "1px solid #fed7aa",
 }
 
-const badgeBajo = {
+const badgeAgotado = {
   display: "inline-flex",
   alignItems: "center",
   padding: "6px 10px",
   borderRadius: "999px",
   fontSize: "12px",
   fontWeight: "bold" as const,
-  background: "#fff8e7",
-  color: "#7a5b00",
-  border: "1px solid #f3d37a",
+  background: "#f3f4f6",
+  color: "#4b5563",
+  border: "1px solid #d1d5db",
 }
 
 const badgeNormal = {
