@@ -63,8 +63,8 @@ export default function RegistroPage() {
   const handleRegistro = async () => {
     setMensaje("")
 
-    if (!fullName || !documentType || !documentNumber || !email || !password || !confirmPassword) {
-      setMensaje("Completa nombre, tipo de documento, número de documento, correo y contraseña.")
+    if (!fullName || !clientType || !documentType || !documentNumber || !email || !password || !confirmPassword) {
+      setMensaje("Completa nombre, tipo de cliente, tipo de documento, número de documento, correo y contraseña.")
       return
     }
 
@@ -302,7 +302,6 @@ export default function RegistroPage() {
                 <option value="">Selecciona tipo</option>
                 <option value="Mayorista">Mayorista</option>
                 <option value="Distribuidor">Distribuidor</option>
-                <option value="Ambos">Ambos</option>
               </select>
             </Field>
 

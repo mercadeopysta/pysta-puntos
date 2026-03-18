@@ -36,22 +36,22 @@ type ExistingRequestGroup = {
   created_at: string
 }
 
+type RedencionInsertada = {
+  id: string
+}
+
 export default function PremiosPage() {
   const [puntosDisponibles, setPuntosDisponibles] = useState(0)
   const [premios, setPremios] = useState<Premio[]>([])
   const [cantidades, setCantidades] = useState<Record<string, string>>({})
   const [cargando, setCargando] = useState(true)
   const [mensaje, setMensaje] = useState("")
-  const [limiteMensual, setLimiteMensual] = useState(5)
-  const [itemsRedimidosMes, setItemsRedimidosMes] = useState(0)
   const [itemsPorPremioMes, setItemsPorPremioMes] = useState<Record<string, number>>({})
   const [procesandoPremioId, setProcesandoPremioId] = useState("")
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [premioPendiente, setPremioPendiente] = useState<Premio | null>(null)
   const [cantidadPendiente, setCantidadPendiente] = useState(0)
-
-  const itemsDisponiblesMes = Math.max(limiteMensual - itemsRedimidosMes, 0)
 
   const cargarDatos = async () => {
     setCargando(true)
@@ -69,17 +69,14 @@ export default function PremiosPage() {
     const { data: settingsData } = await supabase
       .from("settings")
       .select(
-        "redemption_percentage, monthly_redemption_limit, points_expiration_enabled, points_expiration_months"
+        "redemption_percentage, points_expiration_enabled, points_expiration_months"
       )
       .limit(1)
       .single()
 
     const porcentaje = Number(settingsData?.redemption_percentage || 6)
-    const limite = Number(settingsData?.monthly_redemption_limit || 5)
     const vencimientoActivo = Boolean(settingsData?.points_expiration_enabled)
     const mesesVigencia = Number(settingsData?.points_expiration_months || 1)
-
-    setLimiteMensual(limite)
 
     const { data: facturasData } = await supabase
       .from("invoices")
@@ -145,7 +142,6 @@ export default function PremiosPage() {
       })
     }
 
-    setItemsRedimidosMes(itemsMesActual)
     setItemsPorPremioMes(conteoPorPremio)
     setPuntosDisponibles(Math.max(acumulados - redimidos, 0))
 
@@ -330,10 +326,6 @@ export default function PremiosPage() {
       return "No tienes puntos suficientes para esa cantidad."
     }
 
-    if (itemsRedimidosMes + cantidad > limiteMensual) {
-      return `Con esa cantidad superarías el límite mensual de ${limiteMensual} ítems. Ya llevas ${itemsRedimidosMes}.`
-    }
-
     const limitePremio = Number(premio.max_monthly_per_user || 0)
 
     if (limitePremio > 0 && yaRedimidosDeEsePremio + cantidad > limitePremio) {
@@ -380,55 +372,209 @@ export default function PremiosPage() {
       return
     }
 
+    if (procesandoPremioId) return
+
     setMensaje("")
     setProcesandoPremioId(premio.id)
 
-    const grupoActivo = await obtenerGrupoActivoDelDia(emailGuardado)
-    const redemptionGroupId =
-      grupoActivo?.redemption_group_id || generarGrupoRedencion()
+    try {
+      const { data: premioActual, error: premioActualError } = await supabase
+        .from("rewards")
+        .select("id, name, stock, points_required, is_active, max_monthly_per_user")
+        .eq("id", premio.id)
+        .single()
 
-    const filas = Array.from({ length: cantidad }, () => ({
-      user_email: emailGuardado,
-      reward_id: premio.id,
-      reward_name: premio.name,
-      points_used: premio.points_required,
-      status: "requested",
-      redemption_group_id: redemptionGroupId,
-    }))
+      if (premioActualError || !premioActual) {
+        setMensaje("No fue posible validar el premio antes de redimir.")
+        return
+      }
 
-    const { error: redencionError } = await supabase.from("redemptions").insert(filas)
+      if (!premioActual.is_active) {
+        setMensaje("Este premio ya no está activo.")
+        return
+      }
 
-    if (redencionError) {
-      setMensaje("Ocurrió un error al redimir: " + redencionError.message)
+      const stockActual = Number(premioActual.stock || 0)
+      const puntosPorUnidad = Number(premioActual.points_required || 0)
+
+      if (cantidad < 1) {
+        setMensaje("Debes ingresar una cantidad válida.")
+        return
+      }
+
+      if (stockActual <= 0) {
+        setMensaje("Este premio ya está agotado.")
+        return
+      }
+
+      if (cantidad > stockActual) {
+        setMensaje(`Solo hay ${stockActual} unidades disponibles de este premio.`)
+        return
+      }
+
+      const { data: settingsData } = await supabase
+        .from("settings")
+        .select(
+          "redemption_percentage, points_expiration_enabled, points_expiration_months"
+        )
+        .limit(1)
+        .single()
+
+      const porcentaje = Number(settingsData?.redemption_percentage || 6)
+      const vencimientoActivo = Boolean(settingsData?.points_expiration_enabled)
+      const mesesVigencia = Number(settingsData?.points_expiration_months || 1)
+
+      const { data: facturasData } = await supabase
+        .from("invoices")
+        .select("amount_without_vat, invoice_date")
+        .eq("user_email", emailGuardado)
+        .eq("status", "approved")
+
+      let acumulados = 0
+
+      if (facturasData) {
+        const hoy = new Date()
+
+        const facturasVigentes = (facturasData as FacturaSaldo[]).filter((factura) => {
+          if (!vencimientoActivo) return true
+
+          const fechaFactura = new Date(factura.invoice_date)
+          const fechaVencimiento = new Date(fechaFactura)
+          fechaVencimiento.setMonth(fechaVencimiento.getMonth() + mesesVigencia)
+
+          return fechaVencimiento >= hoy
+        })
+
+        const totalCompras = facturasVigentes.reduce((acum, factura) => {
+          return acum + Number(factura.amount_without_vat || 0)
+        }, 0)
+
+        const valorInterno = totalCompras * (porcentaje / 100)
+        acumulados = Math.floor(valorInterno / 100)
+      }
+
+      const { data: redencionesData } = await supabase
+        .from("redemptions")
+        .select("points_used, created_at, reward_id, status")
+        .eq("user_email", emailGuardado)
+        .neq("status", "cancelled")
+
+      let redimidos = 0
+      let itemsPremioMesActual = 0
+
+      if (redencionesData) {
+        redimidos = (redencionesData as Redencion[]).reduce((acum, redencion) => {
+          return acum + Number(redencion.points_used || 0)
+        }, 0)
+
+        const hoy = new Date()
+        const mesActual = hoy.getMonth()
+        const anioActual = hoy.getFullYear()
+
+        ;(redencionesData as Redencion[]).forEach((redencion) => {
+          const fecha = new Date(redencion.created_at)
+
+          if (fecha.getMonth() === mesActual && fecha.getFullYear() === anioActual) {
+            if (redencion.reward_id === premio.id) {
+              itemsPremioMesActual += 1
+            }
+          }
+        })
+      }
+
+      const puntosDisponiblesActuales = Math.max(acumulados - redimidos, 0)
+      const puntosNecesarios = puntosPorUnidad * cantidad
+
+      if (puntosDisponiblesActuales < puntosNecesarios) {
+        setMensaje("No tienes puntos suficientes para esa cantidad.")
+        return
+      }
+
+      const limitePremio = Number(premioActual.max_monthly_per_user || 0)
+
+      if (limitePremio > 0 && itemsPremioMesActual + cantidad > limitePremio) {
+        setMensaje(
+          `Solo puedes redimir máximo ${limitePremio} unidades de este premio por mes. Ya llevas ${itemsPremioMesActual}.`
+        )
+        return
+      }
+
+      const grupoActivo = await obtenerGrupoActivoDelDia(emailGuardado)
+      const redemptionGroupId =
+        grupoActivo?.redemption_group_id || generarGrupoRedencion()
+
+      const filas = Array.from({ length: cantidad }, () => ({
+        user_email: emailGuardado,
+        reward_id: premioActual.id,
+        reward_name: premioActual.name,
+        points_used: puntosPorUnidad,
+        status: "requested",
+        redemption_group_id: redemptionGroupId,
+      }))
+
+      const { data: redencionesInsertadas, error: redencionError } = await supabase
+        .from("redemptions")
+        .insert(filas)
+        .select("id")
+
+      if (redencionError) {
+        setMensaje("Ocurrió un error al redimir: " + redencionError.message)
+        return
+      }
+
+      const nuevoStock = stockActual - cantidad
+
+      const { error: stockError } = await supabase
+        .from("rewards")
+        .update({ stock: nuevoStock })
+        .eq("id", premioActual.id)
+
+      if (stockError) {
+        const idsInsertados = ((redencionesInsertadas || []) as RedencionInsertada[]).map(
+          (r) => r.id
+        )
+
+        if (idsInsertados.length > 0) {
+          await supabase.from("redemptions").delete().in("id", idsInsertados)
+        }
+
+        setMensaje(
+          "No se pudo actualizar el stock. La redención fue revertida para evitar inconsistencias."
+        )
+        return
+      }
+
+      setMensaje(
+        construirMensajeRedencion(
+          {
+            ...premio,
+            stock: nuevoStock,
+            points_required: puntosPorUnidad,
+            name: premioActual.name,
+            max_monthly_per_user: limitePremio,
+          },
+          cantidad,
+          Boolean(grupoActivo)
+        )
+      )
+
+      setCantidades((prev) => ({
+        ...prev,
+        [premio.id]: nuevoStock > 0 ? "1" : "0",
+      }))
+
       setProcesandoPremioId("")
       setConfirmOpen(false)
-      return
-    }
-
-    const { error: stockError } = await supabase
-      .from("rewards")
-      .update({ stock: premio.stock - cantidad })
-      .eq("id", premio.id)
-
-    if (stockError) {
-      setMensaje("La redención se guardó, pero hubo un problema al actualizar el stock.")
+      setPremioPendiente(null)
+      setCantidadPendiente(0)
+      await cargarDatos()
+    } catch (error) {
+      const mensajeError =
+        error instanceof Error ? error.message : "Error inesperado al redimir."
+      setMensaje(mensajeError)
+    } finally {
       setProcesandoPremioId("")
-      setConfirmOpen(false)
-      return
     }
-
-    setMensaje(construirMensajeRedencion(premio, cantidad, Boolean(grupoActivo)))
-
-    setCantidades((prev) => ({
-      ...prev,
-      [premio.id]: premio.stock - cantidad > 0 ? "1" : "0",
-    }))
-
-    setProcesandoPremioId("")
-    setConfirmOpen(false)
-    setPremioPendiente(null)
-    setCantidadPendiente(0)
-    await cargarDatos()
   }
 
   const refrescarPantalla = () => {
@@ -494,16 +640,8 @@ export default function PremiosPage() {
             Aquí puedes ver los premios disponibles para redimir con tus puntos.
           </p>
 
-          <p style={{ color: "#111", fontWeight: "bold", marginBottom: "8px" }}>
-            Tus puntos disponibles: {puntosDisponibles}
-          </p>
-
-          <p style={{ color: "#555", marginBottom: "6px" }}>
-            Ítems redimidos este mes: {itemsRedimidosMes} / {limiteMensual}
-          </p>
-
           <p style={{ color: "#111", fontWeight: "bold", marginBottom: "20px" }}>
-            Ítems disponibles para este mes: {itemsDisponiblesMes}
+            Tus puntos disponibles: {puntosDisponibles}
           </p>
 
           {mensaje && (
@@ -546,7 +684,6 @@ export default function PremiosPage() {
                 const disponible = premio.stock > 0
                 const puedeRedimir =
                   cantidad >= 1 && puntosDisponibles >= puntosNecesarios
-                const excedeLimite = cantidad >= 1 && itemsRedimidosMes + cantidad > limiteMensual
                 const redimidosDeEsePremio = Number(itemsPorPremioMes[premio.id] || 0)
                 const limitePremio = Number(premio.max_monthly_per_user || 0)
                 const excedeLimitePorItem =
@@ -609,15 +746,8 @@ export default function PremiosPage() {
                       </p>
                     )}
 
-                    {disponible && cantidadTexto !== "" && excedeLimite && (
-                      <p style={{ ...textStyle, color: "#b91c1c", fontWeight: "bold" }}>
-                        Supera tu límite mensual de ítems
-                      </p>
-                    )}
-
                     {disponible &&
                       cantidadTexto !== "" &&
-                      !excedeLimite &&
                       excedeLimitePorItem && (
                         <p style={{ ...textStyle, color: "#b91c1c", fontWeight: "bold" }}>
                           Supera el máximo mensual permitido para este premio
@@ -626,7 +756,6 @@ export default function PremiosPage() {
 
                     {disponible &&
                       cantidadTexto !== "" &&
-                      !excedeLimite &&
                       !excedeLimitePorItem &&
                       puedeRedimir && (
                         <p style={{ ...textStyle, color: "#006400", fontWeight: "bold" }}>
@@ -636,7 +765,6 @@ export default function PremiosPage() {
 
                     {disponible &&
                       cantidadTexto !== "" &&
-                      !excedeLimite &&
                       !excedeLimitePorItem &&
                       !puedeRedimir && (
                         <p style={{ ...textStyle, color: "#b45309", fontWeight: "bold" }}>
@@ -648,8 +776,6 @@ export default function PremiosPage() {
                       <button style={buttonDisabled}>Agotado</button>
                     ) : cantidadTexto === "" ? (
                       <button style={buttonDisabled}>Ingresa cantidad</button>
-                    ) : excedeLimite ? (
-                      <button style={buttonDisabled}>Supera límite mensual</button>
                     ) : excedeLimitePorItem ? (
                       <button style={buttonDisabled}>Supera límite por ítem</button>
                     ) : !puedeRedimir ? (

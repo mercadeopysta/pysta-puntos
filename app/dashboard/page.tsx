@@ -19,7 +19,6 @@ type Redencion = {
 
 type SettingsRow = {
   redemption_percentage: number
-  monthly_redemption_limit: number
   points_expiration_enabled: boolean
   points_expiration_months: number
 }
@@ -32,8 +31,6 @@ export default function DashboardPage() {
   const [tipoCliente, setTipoCliente] = useState("")
   const [puntosDisponibles, setPuntosDisponibles] = useState(0)
   const [puntosRedimidos, setPuntosRedimidos] = useState(0)
-  const [itemsRedimidosMes, setItemsRedimidosMes] = useState(0)
-  const [limiteMensual, setLimiteMensual] = useState(5)
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
@@ -92,18 +89,15 @@ export default function DashboardPage() {
         const { data: settingsData } = await supabase
           .from("settings")
           .select(
-            "redemption_percentage, monthly_redemption_limit, points_expiration_enabled, points_expiration_months"
+            "redemption_percentage, points_expiration_enabled, points_expiration_months"
           )
           .limit(1)
           .single()
 
         const settings = settingsData as SettingsRow | null
         const porcentaje = Number(settings?.redemption_percentage || 6)
-        const limite = Number(settings?.monthly_redemption_limit || 5)
         const vencimientoActivo = Boolean(settings?.points_expiration_enabled)
         const mesesVigencia = Number(settings?.points_expiration_months || 1)
-
-        setLimiteMensual(limite)
 
         const { data: facturasData } = await supabase
           .from("invoices")
@@ -141,29 +135,14 @@ export default function DashboardPage() {
           .neq("status", "cancelled")
 
         let totalRedimido = 0
-        let itemsMes = 0
 
         if (redencionesData) {
           totalRedimido = (redencionesData as Redencion[]).reduce((acum, redencion) => {
             return acum + Number(redencion.points_used || 0)
           }, 0)
-
-          const hoy = new Date()
-          const mesActual = hoy.getMonth()
-          const anioActual = hoy.getFullYear()
-
-          ;(redencionesData as Redencion[]).forEach((redencion) => {
-            const fecha = new Date(redencion.created_at)
-            const mismoMes = fecha.getMonth() === mesActual && fecha.getFullYear() === anioActual
-
-            if (mismoMes) {
-              itemsMes += 1
-            }
-          })
         }
 
         setPuntosRedimidos(totalRedimido)
-        setItemsRedimidosMes(itemsMes)
         setPuntosDisponibles(Math.max(acumulados - totalRedimido, 0))
         setAutorizado(true)
       } catch {
@@ -205,8 +184,6 @@ export default function DashboardPage() {
   if (!autorizado) {
     return null
   }
-
-  const itemsDisponiblesMes = Math.max(limiteMensual - itemsRedimidosMes, 0)
 
   return (
     <>
@@ -344,16 +321,6 @@ export default function DashboardPage() {
               titulo="Puntos redimidos"
               valor={String(puntosRedimidos)}
               descripcion="Total de puntos ya usados"
-            />
-            <ResumenCard
-              titulo="Ítems redimidos este mes"
-              valor={`${itemsRedimidosMes}/${limiteMensual}`}
-              descripcion="Control mensual de redenciones"
-            />
-            <ResumenCard
-              titulo="Ítems disponibles este mes"
-              valor={String(itemsDisponiblesMes)}
-              descripcion="Lo que aún puedes redimir"
             />
           </section>
 
