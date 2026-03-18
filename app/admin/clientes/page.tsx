@@ -6,6 +6,7 @@ import { supabase } from "../../../lib/supabase"
 import AdminMenu from "../../../components/AdminMenu"
 import AdminLogoutButton from "../../../components/AdminLogoutButton"
 import AlertMessage from "../../../components/AlertMessage"
+import ConfirmModal from "../../../components/ConfirmModal"
 
 type Cliente = {
   id: string
@@ -19,6 +20,8 @@ type Cliente = {
   is_approved: boolean
   created_at?: string
 }
+
+type BulkAction = "approve" | "activate" | "deactivate" | "unapprove" | ""
 
 export default function AdminClientesPage() {
   const router = useRouter()
@@ -41,6 +44,11 @@ export default function AdminClientesPage() {
   const [editTipoCliente, setEditTipoCliente] = useState("")
   const [editAsesor, setEditAsesor] = useState("")
   const [guardandoEdicion, setGuardandoEdicion] = useState(false)
+
+  const [seleccionados, setSeleccionados] = useState<string[]>([])
+  const [bulkAction, setBulkAction] = useState<BulkAction>("")
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [ejecutandoMasivo, setEjecutandoMasivo] = useState(false)
 
   useEffect(() => {
     const adminLogueado = localStorage.getItem("admin_logged_in")
@@ -276,6 +284,97 @@ export default function AdminClientesPage() {
   const totalPendientes = clientes.filter((c) => !c.is_approved).length
   const totalInactivos = clientes.filter((c) => c.is_approved && !c.is_active).length
 
+  const idsVisibles = clientesFiltrados.map((c) => c.id)
+  const todosVisiblesSeleccionados =
+    idsVisibles.length > 0 && idsVisibles.every((id) => seleccionados.includes(id))
+
+  const toggleSeleccion = (clienteId: string) => {
+    setSeleccionados((prev) =>
+      prev.includes(clienteId) ? prev.filter((id) => id !== clienteId) : [...prev, clienteId]
+    )
+  }
+
+  const toggleSeleccionarTodosVisibles = () => {
+    if (todosVisiblesSeleccionados) {
+      setSeleccionados((prev) => prev.filter((id) => !idsVisibles.includes(id)))
+      return
+    }
+
+    setSeleccionados((prev) => Array.from(new Set([...prev, ...idsVisibles])))
+  }
+
+  const abrirConfirmacionMasiva = (accion: BulkAction) => {
+    if (!accion) return
+
+    if (seleccionados.length === 0) {
+      setTipoMensaje("warning")
+      setMensaje("Debes seleccionar al menos un cliente.")
+      return
+    }
+
+    setBulkAction(accion)
+    setConfirmOpen(true)
+  }
+
+  const cerrarConfirmacionMasiva = () => {
+    if (ejecutandoMasivo) return
+    setConfirmOpen(false)
+    setBulkAction("")
+  }
+
+  const getBulkActionText = () => {
+    if (bulkAction === "approve") return "aprobar"
+    if (bulkAction === "activate") return "activar"
+    if (bulkAction === "deactivate") return "desactivar"
+    if (bulkAction === "unapprove") return "quitar aprobación a"
+    return ""
+  }
+
+  const ejecutarAccionMasiva = async () => {
+    if (!bulkAction || seleccionados.length === 0) return
+
+    setEjecutandoMasivo(true)
+    setMensaje("")
+
+    let payload: { is_approved?: boolean; is_active?: boolean } = {}
+
+    if (bulkAction === "approve") {
+      payload = { is_approved: true, is_active: true }
+    }
+
+    if (bulkAction === "activate") {
+      payload = { is_active: true }
+    }
+
+    if (bulkAction === "deactivate") {
+      payload = { is_active: false }
+    }
+
+    if (bulkAction === "unapprove") {
+      payload = { is_approved: false }
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .update(payload)
+      .in("id", seleccionados)
+
+    if (error) {
+      setTipoMensaje("error")
+      setMensaje("No se pudo ejecutar la acción masiva: " + error.message)
+      setEjecutandoMasivo(false)
+      return
+    }
+
+    setTipoMensaje("success")
+    setMensaje(`Acción masiva aplicada correctamente a ${seleccionados.length} cliente(s).`)
+    setSeleccionados([])
+    setBulkAction("")
+    setConfirmOpen(false)
+    setEjecutandoMasivo(false)
+    cargarClientes()
+  }
+
   if (!autorizado) {
     return (
       <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -287,57 +386,120 @@ export default function AdminClientesPage() {
   }
 
   return (
-    <main className="pysta-page">
-      <div className="pysta-shell" style={{ maxWidth: "1480px" }}>
-        <AdminMenu />
+    <>
+      <main className="pysta-page">
+        <div className="pysta-shell" style={{ maxWidth: "1480px" }}>
+          <AdminMenu />
 
-        <section
-          className="pysta-card"
-          style={{
-            padding: "30px",
-            marginBottom: "22px",
-            background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
-          }}
-        >
-          <div className="pysta-topbar">
-            <div style={{ display: "grid", gap: "10px" }}>
-              <span className="pysta-badge">Gestión de clientes</span>
-              <h1 className="pysta-section-title">Administrar clientes</h1>
-              <p className="pysta-subtitle">
-                Aprueba, activa, desactiva y edita la información básica de los clientes registrados.
-              </p>
+          <section
+            className="pysta-card"
+            style={{
+              padding: "30px",
+              marginBottom: "22px",
+              background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
+            }}
+          >
+            <div className="pysta-topbar">
+              <div style={{ display: "grid", gap: "10px" }}>
+                <span className="pysta-badge">Gestión de clientes</span>
+                <h1 className="pysta-section-title">Administrar clientes</h1>
+                <p className="pysta-subtitle">
+                  Aprueba, activa, desactiva, edita y ahora también gestiona varios clientes al mismo tiempo.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button onClick={refrescarPantalla} className="pysta-btn pysta-btn-light">
+                  Refrescar
+                </button>
+
+                <AdminLogoutButton />
+              </div>
             </div>
+          </section>
 
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <button onClick={refrescarPantalla} className="pysta-btn pysta-btn-light">
-                Refrescar
-              </button>
+          <section
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "16px",
+              marginBottom: "22px",
+            }}
+          >
+            <ResumenCard titulo="Clientes totales" valor={String(totalClientes)} descripcion="Registros encontrados" />
+            <ResumenCard titulo="Activos" valor={String(totalActivos)} descripcion="Aprobados y habilitados" />
+            <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="Por aprobar" />
+            <ResumenCard titulo="Inactivos" valor={String(totalInactivos)} descripcion="Aprobados pero desactivados" />
+          </section>
 
-              <AdminLogoutButton />
-            </div>
-          </div>
-        </section>
+          {editandoId && (
+            <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
+              <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
+                <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Editar cliente</h2>
+                <p style={{ margin: 0, color: "#6b7280" }}>
+                  Actualiza la información básica del cliente seleccionado.
+                </p>
+              </div>
 
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "16px",
-            marginBottom: "22px",
-          }}
-        >
-          <ResumenCard titulo="Clientes totales" valor={String(totalClientes)} descripcion="Registros encontrados" />
-          <ResumenCard titulo="Activos" valor={String(totalActivos)} descripcion="Aprobados y habilitados" />
-          <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="Por aprobar" />
-          <ResumenCard titulo="Inactivos" valor={String(totalInactivos)} descripcion="Aprobados pero desactivados" />
-        </section>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: "16px",
+                }}
+              >
+                <div>
+                  <label style={labelStyle}>Nombre completo</label>
+                  <input className="pysta-input" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} />
+                </div>
 
-        {editandoId && (
+                <div>
+                  <label style={labelStyle}>Documento</label>
+                  <input className="pysta-input" value={editDocumento} onChange={(e) => setEditDocumento(e.target.value)} />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Teléfono</label>
+                  <input className="pysta-input" value={editTelefono} onChange={(e) => setEditTelefono(e.target.value)} />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Tipo de cliente</label>
+                  <select className="pysta-select" value={editTipoCliente} onChange={(e) => setEditTipoCliente(e.target.value)}>
+                    <option value="">Selecciona</option>
+                    <option value="Mayorista">Mayorista</option>
+                    <option value="Distribuidor">Distribuidor</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Asesor asignado</label>
+                  <input className="pysta-input" value={editAsesor} onChange={(e) => setEditAsesor(e.target.value)} />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "18px" }}>
+                <button
+                  onClick={guardarEdicion}
+                  className="pysta-btn pysta-btn-dark"
+                  disabled={guardandoEdicion}
+                  style={{ opacity: guardandoEdicion ? 0.7 : 1 }}
+                >
+                  {guardandoEdicion ? "Guardando..." : "Guardar cambios"}
+                </button>
+
+                <button onClick={cancelarEdicion} className="pysta-btn pysta-btn-light">
+                  Cancelar
+                </button>
+              </div>
+            </section>
+          )}
+
           <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
             <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
-              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Editar cliente</h2>
+              <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
               <p style={{ margin: 0, color: "#6b7280" }}>
-                Actualiza la información básica del cliente seleccionado.
+                Busca clientes por nombre, correo, documento, teléfono o asesor.
               </p>
             </div>
 
@@ -346,253 +508,272 @@ export default function AdminClientesPage() {
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
                 gap: "16px",
+                marginBottom: "16px",
               }}
             >
               <div>
-                <label style={labelStyle}>Nombre completo</label>
-                <input className="pysta-input" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} />
+                <label style={labelStyle}>Buscar</label>
+                <input
+                  className="pysta-input"
+                  placeholder="Nombre, correo, documento, teléfono o asesor"
+                  value={filtroTexto}
+                  onChange={(e) => setFiltroTexto(e.target.value)}
+                />
               </div>
 
               <div>
-                <label style={labelStyle}>Documento</label>
-                <input className="pysta-input" value={editDocumento} onChange={(e) => setEditDocumento(e.target.value)} />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Teléfono</label>
-                <input className="pysta-input" value={editTelefono} onChange={(e) => setEditTelefono(e.target.value)} />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Tipo de cliente</label>
-                <select className="pysta-select" value={editTipoCliente} onChange={(e) => setEditTipoCliente(e.target.value)}>
-                  <option value="">Selecciona</option>
-                  <option value="Mayorista">Mayorista</option>
-                  <option value="Distribuidor">Distribuidor</option>
+                <label style={labelStyle}>Estado</label>
+                <select className="pysta-select" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+                  <option value="">Todos</option>
+                  <option value="activo">Activos</option>
+                  <option value="pendiente">Pendientes</option>
+                  <option value="inactivo">Inactivos</option>
                 </select>
               </div>
 
               <div>
-                <label style={labelStyle}>Asesor asignado</label>
-                <input className="pysta-input" value={editAsesor} onChange={(e) => setEditAsesor(e.target.value)} />
+                <label style={labelStyle}>Tipo de cliente</label>
+                <select className="pysta-select" value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
+                  <option value="">Todos</option>
+                  <option value="mayorista">Mayorista</option>
+                  <option value="distribuidor">Distribuidor</option>
+                </select>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "18px" }}>
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
               <button
-                onClick={guardarEdicion}
-                className="pysta-btn pysta-btn-dark"
-                disabled={guardandoEdicion}
-                style={{ opacity: guardandoEdicion ? 0.7 : 1 }}
+                onClick={() => {
+                  setFiltroTexto("")
+                  setFiltroEstado("")
+                  setFiltroTipo("")
+                }}
+                className="pysta-btn pysta-btn-light"
               >
-                {guardandoEdicion ? "Guardando..." : "Guardar cambios"}
-              </button>
-
-              <button onClick={cancelarEdicion} className="pysta-btn pysta-btn-light">
-                Cancelar
+                Limpiar filtros
               </button>
             </div>
           </section>
-        )}
 
-        <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
-          <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
-            <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
-            <p style={{ margin: 0, color: "#6b7280" }}>
-              Busca clientes por nombre, correo, documento, teléfono o asesor.
-            </p>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-              gap: "16px",
-              marginBottom: "16px",
-            }}
-          >
-            <div>
-              <label style={labelStyle}>Buscar</label>
-              <input
-                className="pysta-input"
-                placeholder="Nombre, correo, documento, teléfono o asesor"
-                value={filtroTexto}
-                onChange={(e) => setFiltroTexto(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>Estado</label>
-              <select className="pysta-select" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
-                <option value="">Todos</option>
-                <option value="activo">Activos</option>
-                <option value="pendiente">Pendientes</option>
-                <option value="inactivo">Inactivos</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={labelStyle}>Tipo de cliente</label>
-              <select className="pysta-select" value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
-                <option value="">Todos</option>
-                <option value="mayorista">Mayorista</option>
-                <option value="distribuidor">Distribuidor</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-            <button
-              onClick={() => {
-                setFiltroTexto("")
-                setFiltroEstado("")
-                setFiltroTipo("")
+          <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "16px",
+                flexWrap: "wrap",
+                alignItems: "center",
               }}
-              className="pysta-btn pysta-btn-light"
             >
-              Limpiar filtros
-            </button>
-          </div>
-        </section>
+              <div style={{ display: "grid", gap: "6px" }}>
+                <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Acciones masivas</h2>
+                <p style={{ margin: 0, color: "#6b7280" }}>
+                  Seleccionados: {seleccionados.length}
+                </p>
+              </div>
 
-        {mensaje && (
-          <section className="pysta-card" style={{ padding: "18px 20px", marginBottom: "22px" }}>
-            <AlertMessage text={mensaje} type={tipoMensaje} />
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button onClick={() => abrirConfirmacionMasiva("approve")} className="pysta-btn pysta-btn-gold">
+                  Aprobar seleccionados
+                </button>
+
+                <button onClick={() => abrirConfirmacionMasiva("activate")} className="pysta-btn pysta-btn-dark">
+                  Activar seleccionados
+                </button>
+
+                <button onClick={() => abrirConfirmacionMasiva("deactivate")} className="pysta-btn pysta-btn-light">
+                  Desactivar seleccionados
+                </button>
+
+                <button onClick={() => abrirConfirmacionMasiva("unapprove")} className="pysta-btn pysta-btn-light">
+                  Quitar aprobación
+                </button>
+              </div>
+            </div>
           </section>
-        )}
 
-        <section className="pysta-card" style={{ padding: "0", overflow: "hidden" }}>
-          <div
-            style={{
-              padding: "22px 24px",
-              borderBottom: "1px solid #e5e7eb",
-              background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Listado de clientes</h2>
-            <p style={{ margin: "6px 0 0 0", color: "#6b7280" }}>
-              Total encontrados: {clientesFiltrados.length}
-            </p>
-          </div>
+          {mensaje && (
+            <section className="pysta-card" style={{ padding: "18px 20px", marginBottom: "22px" }}>
+              <AlertMessage text={mensaje} type={tipoMensaje} />
+            </section>
+          )}
 
-          {cargando ? (
-            <div style={{ padding: "24px", color: "#333" }}>Cargando clientes...</div>
-          ) : clientesFiltrados.length === 0 ? (
-            <div style={{ padding: "24px", color: "#333" }}>No hay clientes para esos filtros.</div>
-          ) : (
-            <div style={{ padding: "18px" }}>
-              <div style={{ display: "grid", gap: "14px" }}>
-                {clientesFiltrados.map((cliente) => (
-                  <article
-                    key={cliente.id}
-                    style={{
-                      background: "#fff",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "20px",
-                      padding: "20px",
-                      boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: "14px",
-                        flexWrap: "wrap",
-                        marginBottom: "14px",
-                        alignItems: "flex-start",
-                      }}
-                    >
-                      <div style={{ display: "grid", gap: "8px" }}>
-                        <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
-                          {cliente.full_name || "Sin nombre"}
-                        </h3>
+          <section className="pysta-card" style={{ padding: "0", overflow: "hidden" }}>
+            <div
+              style={{
+                padding: "22px 24px",
+                borderBottom: "1px solid #e5e7eb",
+                background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Listado de clientes</h2>
+                  <p style={{ margin: "6px 0 0 0", color: "#6b7280" }}>
+                    Total encontrados: {clientesFiltrados.length}
+                  </p>
+                </div>
 
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                          <span style={miniBadge}>{cliente.client_type || "Sin tipo"}</span>
+                <button
+                  onClick={toggleSeleccionarTodosVisibles}
+                  className="pysta-btn pysta-btn-light"
+                >
+                  {todosVisiblesSeleccionados ? "Quitar selección visibles" : "Seleccionar visibles"}
+                </button>
+              </div>
+            </div>
 
-                          <span
-                            style={{
-                              ...miniBadge,
-                              ...badgeEstadoGeneral(cliente),
-                            }}
-                          >
-                            {textoEstadoGeneral(cliente)}
-                          </span>
-                        </div>
-                      </div>
+            {cargando ? (
+              <div style={{ padding: "24px", color: "#333" }}>Cargando clientes...</div>
+            ) : clientesFiltrados.length === 0 ? (
+              <div style={{ padding: "24px", color: "#333" }}>No hay clientes para esos filtros.</div>
+            ) : (
+              <div style={{ padding: "18px" }}>
+                <div style={{ display: "grid", gap: "14px" }}>
+                  {clientesFiltrados.map((cliente) => {
+                    const seleccionado = seleccionados.includes(cliente.id)
 
-                      <div className="pysta-actions">
-                        {!cliente.is_approved ? (
-                          <button
-                            onClick={() => aprobarCliente(cliente.id)}
-                            className="pysta-btn pysta-btn-gold"
-                            style={smallActionBtn}
-                          >
-                            Aprobar
-                          </button>
-                        ) : null}
+                    return (
+                      <article
+                        key={cliente.id}
+                        style={{
+                          background: seleccionado ? "#fffdf5" : "#fff",
+                          border: seleccionado ? "1px solid #f3d37a" : "1px solid #e5e7eb",
+                          borderRadius: "20px",
+                          padding: "20px",
+                          boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: "14px",
+                            flexWrap: "wrap",
+                            marginBottom: "14px",
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                            <input
+                              type="checkbox"
+                              checked={seleccionado}
+                              onChange={() => toggleSeleccion(cliente.id)}
+                              style={{ width: "18px", height: "18px", marginTop: "4px" }}
+                            />
 
-                        {cliente.is_approved ? (
-                          cliente.is_active ? (
+                            <div style={{ display: "grid", gap: "8px" }}>
+                              <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
+                                {cliente.full_name || "Sin nombre"}
+                              </h3>
+
+                              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                                <span style={miniBadge}>{cliente.client_type || "Sin tipo"}</span>
+
+                                <span
+                                  style={{
+                                    ...miniBadge,
+                                    ...badgeEstadoGeneral(cliente),
+                                  }}
+                                >
+                                  {textoEstadoGeneral(cliente)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="pysta-actions">
+                            {!cliente.is_approved ? (
+                              <button
+                                onClick={() => aprobarCliente(cliente.id)}
+                                className="pysta-btn pysta-btn-gold"
+                                style={smallActionBtn}
+                              >
+                                Aprobar
+                              </button>
+                            ) : null}
+
+                            {cliente.is_approved ? (
+                              cliente.is_active ? (
+                                <button
+                                  onClick={() => desactivarCliente(cliente.id)}
+                                  className="pysta-btn pysta-btn-light"
+                                  style={smallActionBtn}
+                                >
+                                  Desactivar
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => activarCliente(cliente.id)}
+                                  className="pysta-btn pysta-btn-dark"
+                                  style={smallActionBtn}
+                                >
+                                  Activar
+                                </button>
+                              )
+                            ) : null}
+
                             <button
-                              onClick={() => desactivarCliente(cliente.id)}
+                              onClick={() => rechazarAprobacion(cliente.id)}
                               className="pysta-btn pysta-btn-light"
                               style={smallActionBtn}
                             >
-                              Desactivar
+                              Quitar aprobación
                             </button>
-                          ) : (
+
                             <button
-                              onClick={() => activarCliente(cliente.id)}
+                              onClick={() => iniciarEdicion(cliente)}
                               className="pysta-btn pysta-btn-dark"
                               style={smallActionBtn}
                             >
-                              Activar
+                              Editar
                             </button>
-                          )
-                        ) : null}
+                          </div>
+                        </div>
 
-                        <button
-                          onClick={() => rechazarAprobacion(cliente.id)}
-                          className="pysta-btn pysta-btn-light"
-                          style={smallActionBtn}
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                            gap: "12px",
+                          }}
                         >
-                          Quitar aprobación
-                        </button>
-
-                        <button
-                          onClick={() => iniciarEdicion(cliente)}
-                          className="pysta-btn pysta-btn-dark"
-                          style={smallActionBtn}
-                        >
-                          Editar
-                        </button>
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-                        gap: "12px",
-                      }}
-                    >
-                      <InfoItem label="Correo" value={cliente.email || "-"} />
-                      <InfoItem label="Documento" value={cliente.document_number || "-"} />
-                      <InfoItem label="Teléfono" value={cliente.phone || "-"} />
-                      <InfoItem label="Tipo de cliente" value={cliente.client_type || "-"} />
-                      <InfoItem label="Asesor" value={cliente.advisor_name || "-"} />
-                      <InfoItem label="Estado" value={textoEstadoGeneral(cliente)} />
-                    </div>
-                  </article>
-                ))}
+                          <InfoItem label="Correo" value={cliente.email || "-"} />
+                          <InfoItem label="Documento" value={cliente.document_number || "-"} />
+                          <InfoItem label="Teléfono" value={cliente.phone || "-"} />
+                          <InfoItem label="Tipo de cliente" value={cliente.client_type || "-"} />
+                          <InfoItem label="Asesor" value={cliente.advisor_name || "-"} />
+                          <InfoItem label="Estado" value={textoEstadoGeneral(cliente)} />
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          )}
-        </section>
-      </div>
-    </main>
+            )}
+          </section>
+        </div>
+      </main>
+
+      <ConfirmModal
+        open={confirmOpen}
+        title="Confirmar acción masiva"
+        message={`¿Seguro que deseas ${getBulkActionText()} ${seleccionados.length} cliente(s)?`}
+        confirmText="Sí, continuar"
+        cancelText="Cancelar"
+        loading={ejecutandoMasivo}
+        onCancel={cerrarConfirmacionMasiva}
+        onConfirm={ejecutarAccionMasiva}
+      />
+    </>
   )
 }
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { ChangeEvent, useEffect, useMemo, useState } from "react"
+import { ChangeEvent, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
 import AdminMenu from "../../../components/AdminMenu"
@@ -34,6 +34,7 @@ export default function AdminPremiosPage() {
   const [maxMonthlyPerUser, setMaxMonthlyPerUser] = useState("")
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [currentImageUrl, setCurrentImageUrl] = useState("")
+
   const [mensaje, setMensaje] = useState("")
   const [tipoMensaje, setTipoMensaje] = useState<"success" | "error" | "warning" | "info">("info")
   const [cargando, setCargando] = useState(true)
@@ -88,6 +89,11 @@ export default function AdminPremiosPage() {
     setMaxMonthlyPerUser("")
     setImageFile(null)
     setCurrentImageUrl("")
+
+    const fileInput = document.getElementById("reward-image-input") as HTMLInputElement | null
+    if (fileInput) {
+      fileInput.value = ""
+    }
   }
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -98,8 +104,14 @@ export default function AdminPremiosPage() {
   const subirImagen = async () => {
     if (!imageFile) return currentImageUrl || null
 
-    const extension = imageFile.name.split(".").pop()
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`
+    const extension = imageFile.name.split(".").pop()?.toLowerCase() || ""
+    const allowed = ["jpg", "jpeg", "png", "webp"]
+
+    if (!allowed.includes(extension)) {
+      throw new Error("Solo se permiten imágenes JPG, PNG o WEBP.")
+    }
+
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}-${imageFile.name}`
 
     const { error } = await supabase.storage
       .from("reward-images")
@@ -113,7 +125,6 @@ export default function AdminPremiosPage() {
     }
 
     const { data } = supabase.storage.from("reward-images").getPublicUrl(fileName)
-
     return data.publicUrl
   }
 
@@ -130,9 +141,21 @@ export default function AdminPremiosPage() {
     const stockNumero = Number(stock)
     const maxMensualNumero = Number(maxMonthlyPerUser || 0)
 
-    if (valor <= 0 || stockNumero < 0 || maxMensualNumero < 0) {
+    if (valor <= 0) {
       setTipoMensaje("warning")
-      setMensaje("Ingresa valores válidos.")
+      setMensaje("El valor del premio debe ser mayor a 0.")
+      return
+    }
+
+    if (stockNumero < 0) {
+      setTipoMensaje("warning")
+      setMensaje("El stock no puede ser negativo.")
+      return
+    }
+
+    if (maxMensualNumero < 0) {
+      setTipoMensaje("warning")
+      setMensaje("El máximo por usuario al mes no puede ser negativo.")
       return
     }
 
@@ -318,11 +341,11 @@ export default function AdminPremiosPage() {
   const puntosCalculados = itemValue && Number(itemValue) > 0 ? Math.ceil(Number(itemValue) / 100) : 0
 
   const obtenerEstadoStock = (stockValue: number) => {
-    const stock = Number(stockValue || 0)
+    const stockNumero = Number(stockValue || 0)
 
-    if (stock === 0) return "agotado"
-    if (stock >= 1 && stock <= 2) return "critico"
-    if (stock >= 3 && stock <= 5) return "bajo"
+    if (stockNumero === 0) return "agotado"
+    if (stockNumero >= 1 && stockNumero <= 2) return "critico"
+    if (stockNumero >= 3 && stockNumero <= 5) return "bajo"
     return "normal"
   }
 
@@ -344,6 +367,15 @@ export default function AdminPremiosPage() {
     return <span style={badgeNormal}>Stock normal</span>
   }
 
+  const renderStockTexto = (stockValue: number) => {
+    const estado = obtenerEstadoStock(stockValue)
+
+    if (estado === "agotado") return "Agotado"
+    if (estado === "critico") return "Crítico"
+    if (estado === "bajo") return "Bajo"
+    return "Normal"
+  }
+
   if (!autorizado) {
     return (
       <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -360,7 +392,14 @@ export default function AdminPremiosPage() {
         <div className="pysta-shell" style={{ maxWidth: "1380px" }}>
           <AdminMenu />
 
-          <section className="pysta-card" style={{ padding: "30px", marginBottom: "22px", background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)" }}>
+          <section
+            className="pysta-card"
+            style={{
+              padding: "30px",
+              marginBottom: "22px",
+              background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
+            }}
+          >
             <div className="pysta-topbar">
               <div style={{ display: "grid", gap: "10px" }}>
                 <span className="pysta-badge">Gestión de catálogo</span>
@@ -370,7 +409,13 @@ export default function AdminPremiosPage() {
                 </p>
               </div>
 
-              <AdminLogoutButton />
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button onClick={cargarPremios} className="pysta-btn pysta-btn-light">
+                  Refrescar
+                </button>
+
+                <AdminLogoutButton />
+              </div>
             </div>
           </section>
 
@@ -416,11 +461,20 @@ export default function AdminPremiosPage() {
                   }}
                 >
                   <Field label="Nombre del premio">
-                    <input className="pysta-input" type="text" value={name} onChange={(e) => setName(e.target.value)} />
+                    <input
+                      className="pysta-input"
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
                   </Field>
 
                   <Field label="Tipo de cliente">
-                    <select className="pysta-select" value={clientType} onChange={(e) => setClientType(e.target.value)}>
+                    <select
+                      className="pysta-select"
+                      value={clientType}
+                      onChange={(e) => setClientType(e.target.value)}
+                    >
                       <option value="">Selecciona tipo de cliente</option>
                       <option value="Mayorista">Mayorista</option>
                       <option value="Distribuidor">Distribuidor</option>
@@ -429,25 +483,51 @@ export default function AdminPremiosPage() {
                   </Field>
 
                   <Field label="Valor del premio">
-                    <input className="pysta-input" type="number" value={itemValue} onChange={(e) => setItemValue(e.target.value)} />
+                    <input
+                      className="pysta-input"
+                      type="number"
+                      value={itemValue}
+                      onChange={(e) => setItemValue(e.target.value)}
+                    />
                   </Field>
 
                   <Field label="Stock disponible">
-                    <input className="pysta-input" type="number" value={stock} onChange={(e) => setStock(e.target.value)} />
+                    <input
+                      className="pysta-input"
+                      type="number"
+                      value={stock}
+                      onChange={(e) => setStock(e.target.value)}
+                    />
                   </Field>
 
                   <Field label="Máximo por usuario al mes">
-                    <input className="pysta-input" type="number" value={maxMonthlyPerUser} onChange={(e) => setMaxMonthlyPerUser(e.target.value)} />
+                    <input
+                      className="pysta-input"
+                      type="number"
+                      value={maxMonthlyPerUser}
+                      onChange={(e) => setMaxMonthlyPerUser(e.target.value)}
+                    />
                   </Field>
                 </div>
 
                 <div style={{ marginTop: "16px" }}>
                   <label style={labelStyle}>Foto del premio</label>
-                  <input className="pysta-input" type="file" accept="image/*" onChange={handleFileChange} />
+                  <input
+                    id="reward-image-input"
+                    className="pysta-input"
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp"
+                    onChange={handleFileChange}
+                  />
                 </div>
 
                 <div className="pysta-actions" style={{ marginTop: "18px" }}>
-                  <button onClick={handleGuardarPremio} disabled={subiendo} className="pysta-btn pysta-btn-dark" style={{ opacity: subiendo ? 0.7 : 1 }}>
+                  <button
+                    onClick={handleGuardarPremio}
+                    disabled={subiendo}
+                    className="pysta-btn pysta-btn-dark"
+                    style={{ opacity: subiendo ? 0.7 : 1 }}
+                  >
                     {subiendo ? "Subiendo..." : editingId ? "Actualizar premio" : "Guardar premio"}
                   </button>
 
@@ -633,15 +713,27 @@ export default function AdminPremiosPage() {
                             </div>
 
                             <div className="pysta-actions">
-                              <button onClick={() => handleEditar(premio)} className="pysta-btn pysta-btn-gold" style={smallActionBtn}>
+                              <button
+                                onClick={() => handleEditar(premio)}
+                                className="pysta-btn pysta-btn-gold"
+                                style={smallActionBtn}
+                              >
                                 Editar
                               </button>
 
-                              <button onClick={() => handleCambiarEstado(premio)} className="pysta-btn pysta-btn-light" style={smallActionBtn}>
+                              <button
+                                onClick={() => handleCambiarEstado(premio)}
+                                className="pysta-btn pysta-btn-light"
+                                style={smallActionBtn}
+                              >
                                 {premio.is_active ? "Desactivar" : "Activar"}
                               </button>
 
-                              <button onClick={() => pedirEliminarPremio(premio)} className="pysta-btn pysta-btn-danger" style={smallActionBtn}>
+                              <button
+                                onClick={() => pedirEliminarPremio(premio)}
+                                className="pysta-btn pysta-btn-danger"
+                                style={smallActionBtn}
+                              >
                                 Eliminar
                               </button>
                             </div>
@@ -654,10 +746,16 @@ export default function AdminPremiosPage() {
                               gap: "12px",
                             }}
                           >
-                            <InfoItem label="Valor" value={`$${Number(premio.item_value || 0).toLocaleString("es-CO")}`} />
+                            <InfoItem
+                              label="Valor"
+                              value={`$${Number(premio.item_value || 0).toLocaleString("es-CO")}`}
+                            />
                             <InfoItem label="Puntos requeridos" value={String(premio.points_required)} />
                             <InfoItem label="Stock disponible" value={String(premio.stock)} />
-                            <InfoItem label="Máximo por usuario al mes" value={String(premio.max_monthly_per_user ?? 0)} />
+                            <InfoItem
+                              label="Máximo por usuario al mes"
+                              value={String(premio.max_monthly_per_user ?? 0)}
+                            />
                           </div>
                         </div>
                       </div>
@@ -708,7 +806,13 @@ function ResumenCard({
   descripcion: string
 }) {
   return (
-    <div className="pysta-card" style={{ padding: "22px", background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)" }}>
+    <div
+      className="pysta-card"
+      style={{
+        padding: "22px",
+        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
+      }}
+    >
       <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
       <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
       <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
@@ -718,18 +822,22 @@ function ResumenCard({
 
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "12px 14px" }}>
-      <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>{label}</p>
-      <p style={{ margin: 0, fontSize: "15px", color: "#111", lineHeight: 1.5 }}>{value}</p>
+    <div
+      style={{
+        background: "#f9fafb",
+        border: "1px solid #e5e7eb",
+        borderRadius: "14px",
+        padding: "12px 14px",
+      }}
+    >
+      <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
+        {label}
+      </p>
+      <p style={{ margin: 0, fontSize: "15px", color: "#111", lineHeight: 1.5 }}>
+        {value}
+      </p>
     </div>
   )
-}
-
-function renderStockTexto(stock: number) {
-  if (stock === 0) return "Agotado"
-  if (stock >= 1 && stock <= 2) return "Crítico"
-  if (stock >= 3 && stock <= 5) return "Bajo"
-  return "Normal"
 }
 
 const labelStyle = {
