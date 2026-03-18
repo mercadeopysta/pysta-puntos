@@ -11,6 +11,8 @@ type AdminUser = {
   created_at: string
 }
 
+const ADMIN_SESSION_HOURS = 12
+
 export default function AdminLoginPage() {
   const router = useRouter()
 
@@ -19,21 +21,33 @@ export default function AdminLoginPage() {
   const [mensaje, setMensaje] = useState("")
   const [cargando, setCargando] = useState(false)
 
+  const limpiarSesionAdmin = () => {
+    localStorage.removeItem("admin_logged_in")
+    localStorage.removeItem("admin_email")
+    localStorage.removeItem("admin_nombre")
+    localStorage.removeItem("admin_login_at")
+    localStorage.removeItem("admin_session_expires_at")
+  }
+
   const handleLogin = async () => {
     setMensaje("")
 
-    if (!email || !password) {
+    const emailNormalizado = email.trim().toLowerCase()
+    const passwordNormalizada = password
+
+    if (!emailNormalizado || !passwordNormalizada) {
       setMensaje("Completa correo y contraseña.")
       return
     }
 
     setCargando(true)
+    limpiarSesionAdmin()
 
     const { data, error } = await supabase
       .from("admin_users")
       .select("id, email, password, created_at")
-      .eq("email", email.trim())
-      .eq("password", password)
+      .eq("email", emailNormalizado)
+      .eq("password", passwordNormalizada)
       .maybeSingle()
 
     if (error) {
@@ -50,11 +64,17 @@ export default function AdminLoginPage() {
       return
     }
 
+    const ahora = new Date()
+    const expiracion = new Date(ahora.getTime() + ADMIN_SESSION_HOURS * 60 * 60 * 1000)
+
     localStorage.setItem("admin_logged_in", "true")
     localStorage.setItem("admin_email", admin.email || "")
     localStorage.setItem("admin_nombre", admin.email || "Administrador")
+    localStorage.setItem("admin_login_at", ahora.toISOString())
+    localStorage.setItem("admin_session_expires_at", expiracion.toISOString())
 
-    router.push("/admin/clientes")
+    router.replace("/admin")
+    setCargando(false)
   }
 
   return (
@@ -245,6 +265,11 @@ export default function AdminLoginPage() {
                 placeholder="admin@empresa.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !cargando) {
+                    handleLogin()
+                  }
+                }}
               />
             </div>
 
@@ -256,6 +281,11 @@ export default function AdminLoginPage() {
                 placeholder="Escribe tu contraseña"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !cargando) {
+                    handleLogin()
+                  }
+                }}
               />
             </div>
 

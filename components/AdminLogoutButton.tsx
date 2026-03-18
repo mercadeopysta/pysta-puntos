@@ -6,13 +6,17 @@ import { supabase } from "../lib/supabase"
 export default function AdminLogoutButton() {
   const router = useRouter()
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-
+  const limpiarSesionAdmin = () => {
     localStorage.removeItem("admin_logged_in")
     localStorage.removeItem("admin_email")
     localStorage.removeItem("admin_nombre")
+    localStorage.removeItem("admin_login_at")
+    localStorage.removeItem("admin_session_expires_at")
+  }
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    limpiarSesionAdmin()
     router.replace("/admin/login")
   }
 
