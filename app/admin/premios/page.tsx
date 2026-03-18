@@ -3,6 +3,7 @@
 import { ChangeEvent, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
+import { validarAccesoAdmin } from "../../../lib/adminSession"
 import AdminMenu from "../../../components/AdminMenu"
 import AdminLogoutButton from "../../../components/AdminLogoutButton"
 import ConfirmModal from "../../../components/ConfirmModal"
@@ -45,14 +46,14 @@ export default function AdminPremiosPage() {
   const [eliminando, setEliminando] = useState(false)
 
   useEffect(() => {
-    const adminLogueado = localStorage.getItem("admin_logged_in")
-
-    if (adminLogueado !== "true") {
-      router.push("/admin/login")
-      return
+    const validar = async () => {
+      const ok = await validarAccesoAdmin(router)
+      if (ok) {
+        setAutorizado(true)
+      }
     }
 
-    setAutorizado(true)
+    validar()
   }, [router])
 
   const cargarPremios = async () => {

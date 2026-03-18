@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../lib/supabase"
+import { validarAccesoAdmin } from "../../lib/adminSession"
 import AdminMenu from "../../components/AdminMenu"
 import AdminLogoutButton from "../../components/AdminLogoutButton"
 
@@ -46,14 +47,14 @@ export default function AdminDashboardPage() {
   const [premiosActivos, setPremiosActivos] = useState(0)
 
   useEffect(() => {
-    const adminLogueado = localStorage.getItem("admin_logged_in")
-
-    if (adminLogueado !== "true") {
-      router.push("/admin/login")
-      return
+    const validar = async () => {
+      const ok = await validarAccesoAdmin(router)
+      if (ok) {
+        setAutorizado(true)
+      }
     }
 
-    setAutorizado(true)
+    validar()
   }, [router])
 
   const cargarResumen = async () => {
@@ -128,7 +129,10 @@ export default function AdminDashboardPage() {
 
   if (!autorizado) {
     return (
-      <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <main
+        className="pysta-page"
+        style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+      >
         <div className="pysta-card" style={{ padding: "24px 28px" }}>
           Validando acceso...
         </div>

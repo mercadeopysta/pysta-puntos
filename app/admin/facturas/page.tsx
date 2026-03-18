@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
+import { validarAccesoAdmin } from "../../../lib/adminSession"
 import AdminMenu from "../../../components/AdminMenu"
 import AdminLogoutButton from "../../../components/AdminLogoutButton"
 import ConfirmModal from "../../../components/ConfirmModal"
@@ -58,14 +59,14 @@ export default function AdminFacturasPage() {
   const [eliminandoFactura, setEliminandoFactura] = useState(false)
 
   useEffect(() => {
-    const adminLogueado = localStorage.getItem("admin_logged_in")
-
-    if (adminLogueado !== "true") {
-      router.push("/admin/login")
-      return
+    const validar = async () => {
+      const ok = await validarAccesoAdmin(router)
+      if (ok) {
+        setAutorizado(true)
+      }
     }
 
-    setAutorizado(true)
+    validar()
   }, [router])
 
   const cargarDatos = async () => {
@@ -90,20 +91,25 @@ export default function AdminFacturasPage() {
     const correos = Array.from(new Set(facturasRows.map((f) => f.user_email).filter(Boolean)))
 
     if (correos.length > 0) {
-      const { data: perfilesData } = await supabase
+      const { data: perfilesData, error: perfilesError } = await supabase
         .from("profiles")
         .select("email, full_name, document_number, advisor_name, client_type")
         .in("email", correos)
 
-      const mapa: Record<string, ProfileRow> = {}
+      if (perfilesError) {
+        console.error("Error cargando perfiles para facturas:", perfilesError)
+        setProfilesMap({})
+      } else {
+        const mapa: Record<string, ProfileRow> = {}
 
-      ;((perfilesData as ProfileRow[]) || []).forEach((perfil) => {
-        if (perfil.email) {
-          mapa[perfil.email] = perfil
-        }
-      })
+        ;((perfilesData as ProfileRow[]) || []).forEach((perfil) => {
+          if (perfil.email) {
+            mapa[perfil.email] = perfil
+          }
+        })
 
-      setProfilesMap(mapa)
+        setProfilesMap(mapa)
+      }
     } else {
       setProfilesMap({})
     }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
+import { validarAccesoAdmin } from "../../../lib/adminSession"
 import AdminMenu from "../../../components/AdminMenu"
 import AdminLogoutButton from "../../../components/AdminLogoutButton"
 import AlertMessage from "../../../components/AlertMessage"
@@ -10,7 +11,6 @@ import AlertMessage from "../../../components/AlertMessage"
 type Settings = {
   id: string
   redemption_percentage: number
-  monthly_redemption_limit: number
   points_expiration_enabled: boolean
   points_expiration_months: number
   intro_instructions: string
@@ -22,28 +22,31 @@ export default function AdminConfiguracionPage() {
   const [autorizado, setAutorizado] = useState(false)
   const [settingsId, setSettingsId] = useState("")
   const [redemptionPercentage, setRedemptionPercentage] = useState("")
-  const [monthlyLimit, setMonthlyLimit] = useState("")
   const [expirationEnabled, setExpirationEnabled] = useState(false)
   const [expirationMonths, setExpirationMonths] = useState("")
   const [introInstructions, setIntroInstructions] = useState("")
   const [mensaje, setMensaje] = useState("")
   const [tipoMensaje, setTipoMensaje] = useState<"success" | "error" | "warning" | "info">("info")
   const [cargando, setCargando] = useState(true)
+  const [guardando, setGuardando] = useState(false)
 
   useEffect(() => {
-    const adminLogueado = localStorage.getItem("admin_logged_in")
-
-    if (adminLogueado !== "true") {
-      router.push("/admin/login")
-      return
+    const validar = async () => {
+      const ok = await validarAccesoAdmin(router)
+      if (ok) {
+        setAutorizado(true)
+      }
     }
 
-    setAutorizado(true)
+    validar()
   }, [router])
 
   useEffect(() => {
     const cargarConfiguracion = async () => {
       if (!autorizado) return
+
+      setCargando(true)
+      setMensaje("")
 
       const { data, error } = await supabase
         .from("settings")
@@ -61,10 +64,9 @@ export default function AdminConfiguracionPage() {
       const config = data as Settings
 
       setSettingsId(String(config.id))
-      setRedemptionPercentage(String(config.redemption_percentage))
-      setMonthlyLimit(String(config.monthly_redemption_limit))
-      setExpirationEnabled(config.points_expiration_enabled)
-      setExpirationMonths(String(config.points_expiration_months))
+      setRedemptionPercentage(String(config.redemption_percentage ?? 0))
+      setExpirationEnabled(Boolean(config.points_expiration_enabled))
+      setExpirationMonths(String(config.points_expiration_months ?? 0))
       setIntroInstructions(config.intro_instructions || "")
       setCargando(false)
     }
@@ -81,19 +83,35 @@ export default function AdminConfiguracionPage() {
       return
     }
 
-    if (!redemptionPercentage || !monthlyLimit || !expirationMonths) {
+    if (!redemptionPercentage || !expirationMonths) {
       setTipoMensaje("warning")
       setMensaje("Completa todos los campos obligatorios.")
       return
     }
 
+    const porcentaje = Number(redemptionPercentage)
+    const meses = Number(expirationMonths)
+
+    if (Number.isNaN(porcentaje) || porcentaje < 0) {
+      setTipoMensaje("warning")
+      setMensaje("El porcentaje de conversión debe ser un número válido.")
+      return
+    }
+
+    if (Number.isNaN(meses) || meses < 0) {
+      setTipoMensaje("warning")
+      setMensaje("Los meses de vigencia deben ser un número válido.")
+      return
+    }
+
+    setGuardando(true)
+
     const { error } = await supabase
       .from("settings")
       .update({
-        redemption_percentage: Number(redemptionPercentage),
-        monthly_redemption_limit: Number(monthlyLimit),
+        redemption_percentage: porcentaje,
         points_expiration_enabled: expirationEnabled,
-        points_expiration_months: Number(expirationMonths),
+        points_expiration_months: meses,
         intro_instructions: introInstructions,
       })
       .eq("id", settingsId)
@@ -101,24 +119,24 @@ export default function AdminConfiguracionPage() {
     if (error) {
       setTipoMensaje("error")
       setMensaje("Ocurrió un error al guardar: " + error.message)
+      setGuardando(false)
       return
     }
 
     setTipoMensaje("success")
     setMensaje("Configuración actualizada correctamente.")
+    setGuardando(false)
   }
 
   const resumen = useMemo(() => {
     const porcentaje = Number(redemptionPercentage || 0)
-    const limiteMensual = Number(monthlyLimit || 0)
     const vigencia = Number(expirationMonths || 0)
 
     return {
       porcentaje,
-      limiteMensual,
       vigencia,
     }
-  }, [redemptionPercentage, monthlyLimit, expirationMonths])
+  }, [redemptionPercentage, expirationMonths])
 
   if (!autorizado) {
     return (
@@ -148,7 +166,7 @@ export default function AdminConfiguracionPage() {
               <span className="pysta-badge">Parámetros del sistema</span>
               <h1 className="pysta-section-title">Configuración general</h1>
               <p className="pysta-subtitle">
-                Ajusta las reglas generales del programa de puntos, el límite mensual total y el comportamiento general de la plataforma.
+                Ajusta las reglas generales del programa de puntos y el comportamiento general de la plataforma.
               </p>
             </div>
 
@@ -171,11 +189,6 @@ export default function AdminConfiguracionPage() {
               descripcion="Base para acumulación"
             />
             <ResumenCard
-              titulo="Límite mensual"
-              valor={String(resumen.limiteMensual)}
-              descripcion="Ítems totales por cliente"
-            />
-            <ResumenCard
               titulo="Vigencia puntos"
               valor={expirationEnabled ? `${resumen.vigencia} mes(es)` : "Inactiva"}
               descripcion="Caducidad configurada"
@@ -196,7 +209,7 @@ export default function AdminConfiguracionPage() {
               <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
                 <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Reglas del programa</h2>
                 <p style={{ margin: 0, color: "#6b7280" }}>
-                  Ajusta conversión, límite mensual total, vigencia de puntos e instrucciones mostradas al cliente.
+                  Ajusta conversión, vigencia de puntos e instrucciones mostradas al cliente.
                 </p>
               </div>
 
@@ -227,19 +240,6 @@ export default function AdminConfiguracionPage() {
                       />
                       <p style={helperText}>
                         Ejemplo: 6 significa que el cliente acumula puntos sobre el 6% del valor aprobado.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label style={labelStyle}>Límite mensual total de ítems</label>
-                      <input
-                        className="pysta-input"
-                        type="number"
-                        value={monthlyLimit}
-                        onChange={(e) => setMonthlyLimit(e.target.value)}
-                      />
-                      <p style={helperText}>
-                        Cantidad máxima total de premios que un cliente puede redimir en el mes, sumando todos los ítems.
                       </p>
                     </div>
 
@@ -311,7 +311,7 @@ export default function AdminConfiguracionPage() {
                       Cómo funciona ahora
                     </h3>
                     <p style={{ margin: 0, color: "#444", lineHeight: 1.6, fontSize: "14px" }}>
-                      El límite mensual total se configura aquí. El máximo que un cliente puede redimir de cada premio específico se configura directamente en la sección de premios.
+                      El máximo que un cliente puede redimir de cada premio específico se configura directamente en la sección de premios.
                     </p>
                   </div>
 
@@ -333,8 +333,10 @@ export default function AdminConfiguracionPage() {
                     <button
                       onClick={guardarConfiguracion}
                       className="pysta-btn pysta-btn-dark"
+                      disabled={guardando}
+                      style={{ opacity: guardando ? 0.7 : 1 }}
                     >
-                      Guardar configuración
+                      {guardando ? "Guardando..." : "Guardar configuración"}
                     </button>
                   </div>
 
@@ -366,10 +368,6 @@ export default function AdminConfiguracionPage() {
                   <InfoItem
                     label="Conversión"
                     value={`${resumen.porcentaje}%`}
-                  />
-                  <InfoItem
-                    label="Límite mensual total"
-                    value={`${resumen.limiteMensual} ítems`}
                   />
                   <InfoItem
                     label="Límite por premio"

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
+import { validarAccesoAdmin } from "../../../lib/adminSession"
 import AdminMenu from "../../../components/AdminMenu"
 import AdminLogoutButton from "../../../components/AdminLogoutButton"
 import ConfirmModal from "../../../components/ConfirmModal"
@@ -77,14 +78,14 @@ export default function AdminRedencionesPage() {
   const [eliminandoGrupo, setEliminandoGrupo] = useState(false)
 
   useEffect(() => {
-    const adminLogueado = localStorage.getItem("admin_logged_in")
-
-    if (adminLogueado !== "true") {
-      router.push("/admin/login")
-      return
+    const validar = async () => {
+      const ok = await validarAccesoAdmin(router)
+      if (ok) {
+        setAutorizado(true)
+      }
     }
 
-    setAutorizado(true)
+    validar()
   }, [router])
 
   const cargarDatos = async () => {
