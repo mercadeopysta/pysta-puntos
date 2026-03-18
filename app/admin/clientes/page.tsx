@@ -210,14 +210,35 @@ export default function AdminClientesPage() {
     setMensaje("")
     setGuardandoEdicion(true)
 
+    if (!editNombre.trim()) {
+      setTipoMensaje("warning")
+      setMensaje("El nombre del cliente no puede estar vacío.")
+      setGuardandoEdicion(false)
+      return
+    }
+
+    if (!editTipoCliente.trim()) {
+      setTipoMensaje("warning")
+      setMensaje("Debes seleccionar un tipo de cliente.")
+      setGuardandoEdicion(false)
+      return
+    }
+
+    if (editTipoCliente === "Ambos") {
+      setTipoMensaje("warning")
+      setMensaje("“Ambos” no es un tipo válido para un cliente. Debe ser Mayorista o Distribuidor.")
+      setGuardandoEdicion(false)
+      return
+    }
+
     const { error } = await supabase
       .from("profiles")
       .update({
-        full_name: editNombre,
-        document_number: editDocumento,
-        phone: editTelefono,
+        full_name: editNombre.trim(),
+        document_number: editDocumento.trim(),
+        phone: editTelefono.trim(),
         client_type: editTipoCliente,
-        advisor_name: editAsesor,
+        advisor_name: editAsesor.trim(),
       })
       .eq("id", editandoId)
 
@@ -272,6 +293,12 @@ export default function AdminClientesPage() {
       color: "#166534",
       border: "1px solid #bbf7d0",
     }
+  }
+
+  const textoTipoCliente = (tipo?: string | null) => {
+    if (!tipo) return "Sin tipo"
+    if (tipo === "Ambos") return "Dato antiguo: Ambos"
+    return tipo
   }
 
   const clientesFiltrados = useMemo(() => {
@@ -404,7 +431,7 @@ export default function AdminClientesPage() {
       correo: cliente.email || "",
       documento: cliente.document_number || "",
       telefono: cliente.phone || "",
-      tipo_cliente: cliente.client_type || "",
+      tipo_cliente: textoTipoCliente(cliente.client_type),
       asesor: cliente.advisor_name || "",
       aprobado: cliente.is_approved ? "Sí" : "No",
       activo: cliente.is_active ? "Sí" : "No",
@@ -535,8 +562,13 @@ export default function AdminClientesPage() {
                     <option value="">Selecciona</option>
                     <option value="Mayorista">Mayorista</option>
                     <option value="Distribuidor">Distribuidor</option>
-                    <option value="Ambos">Ambos</option>
                   </select>
+
+                  {editTipoCliente === "Ambos" && (
+                    <p style={{ marginTop: "8px", color: "#b45309", fontSize: "13px" }}>
+                      Este cliente tiene un valor antiguo inválido. Debes cambiarlo a Mayorista o Distribuidor.
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -604,7 +636,6 @@ export default function AdminClientesPage() {
                   <option value="">Todos</option>
                   <option value="mayorista">Mayorista</option>
                   <option value="distribuidor">Distribuidor</option>
-                  <option value="ambos">Ambos</option>
                 </select>
               </div>
             </div>
@@ -748,7 +779,7 @@ export default function AdminClientesPage() {
                               </h3>
 
                               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                                <span style={miniBadge}>{cliente.client_type || "Sin tipo"}</span>
+                                <span style={miniBadge}>{textoTipoCliente(cliente.client_type)}</span>
 
                                 <span
                                   style={{
@@ -821,7 +852,7 @@ export default function AdminClientesPage() {
                           <InfoItem label="Correo" value={cliente.email || "-"} />
                           <InfoItem label="Documento" value={cliente.document_number || "-"} />
                           <InfoItem label="Teléfono" value={cliente.phone || "-"} />
-                          <InfoItem label="Tipo de cliente" value={cliente.client_type || "-"} />
+                          <InfoItem label="Tipo de cliente" value={textoTipoCliente(cliente.client_type)} />
                           <InfoItem label="Asesor" value={cliente.advisor_name || "-"} />
                           <InfoItem label="Estado" value={textoEstadoGeneral(cliente)} />
                         </div>
