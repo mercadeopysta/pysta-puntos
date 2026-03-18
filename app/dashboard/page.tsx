@@ -34,6 +34,12 @@ type RedemptionStatusRow = {
   status: string | null
 }
 
+type PuntosVencimientoInfo = {
+  puntosVigentes: number
+  puntosPorVencer: number
+  proximaFechaVencimiento: string
+}
+
 export default function DashboardPage() {
   const router = useRouter()
 
@@ -48,6 +54,61 @@ export default function DashboardPage() {
   const [facturasRechazadas, setFacturasRechazadas] = useState(0)
   const [redencionesPendientes, setRedencionesPendientes] = useState(0)
   const [redencionesCanceladas, setRedencionesCanceladas] = useState(0)
+
+  const [puntosPorVencer, setPuntosPorVencer] = useState(0)
+  const [proximaFechaVencimiento, setProximaFechaVencimiento] = useState("")
+
+  const calcularResumenPuntos = (
+    facturasAprobadas: FacturaSaldo[],
+    porcentaje: number,
+    vencimientoActivo: boolean,
+    mesesVigencia: number
+  ): PuntosVencimientoInfo => {
+    const hoy = new Date()
+    const en30Dias = new Date()
+    en30Dias.setDate(en30Dias.getDate() + 30)
+
+    let puntosVigentes = 0
+    let puntosPorVencer = 0
+    let proximaFecha: Date | null = null
+
+    for (const factura of facturasAprobadas) {
+      const valor = Number(factura.amount_without_vat || 0)
+      const valorInterno = valor * (porcentaje / 100)
+      const puntosFactura = Math.floor(valorInterno / 100)
+
+      if (puntosFactura <= 0) continue
+
+      if (!vencimientoActivo) {
+        puntosVigentes += puntosFactura
+        continue
+      }
+
+      const fechaFactura = new Date(factura.invoice_date)
+      const fechaVencimiento = new Date(fechaFactura)
+      fechaVencimiento.setMonth(fechaVencimiento.getMonth() + mesesVigencia)
+
+      if (fechaVencimiento >= hoy) {
+        puntosVigentes += puntosFactura
+
+        if (fechaVencimiento <= en30Dias) {
+          puntosPorVencer += puntosFactura
+
+          if (!proximaFecha || fechaVencimiento < proximaFecha) {
+            proximaFecha = fechaVencimiento
+          }
+        }
+      }
+    }
+
+    return {
+      puntosVigentes,
+      puntosPorVencer,
+      proximaFechaVencimiento: proximaFecha
+        ? proximaFecha.toLocaleDateString("es-CO")
+        : "",
+    }
+  }
 
   useEffect(() => {
     const validarYCargar = async () => {
@@ -121,28 +182,13 @@ export default function DashboardPage() {
           .eq("user_email", email)
           .eq("status", "approved")
 
-        let acumulados = 0
-
-        if (facturasData) {
-          const hoy = new Date()
-
-          const facturasVigentes = (facturasData as FacturaSaldo[]).filter((factura) => {
-            if (!vencimientoActivo) return true
-
-            const fechaFactura = new Date(factura.invoice_date)
-            const fechaVencimiento = new Date(fechaFactura)
-            fechaVencimiento.setMonth(fechaVencimiento.getMonth() + mesesVigencia)
-
-            return fechaVencimiento >= hoy
-          })
-
-          const totalCompras = facturasVigentes.reduce((acum, factura) => {
-            return acum + Number(factura.amount_without_vat || 0)
-          }, 0)
-
-          const valorInterno = totalCompras * (porcentaje / 100)
-          acumulados = Math.floor(valorInterno / 100)
-        }
+        const facturasAprobadas = (facturasData as FacturaSaldo[]) || []
+        const resumenPuntos = calcularResumenPuntos(
+          facturasAprobadas,
+          porcentaje,
+          vencimientoActivo,
+          mesesVigencia
+        )
 
         const { data: redencionesData } = await supabase
           .from("redemptions")
@@ -184,8 +230,11 @@ export default function DashboardPage() {
           redencionesEstado.filter((redencion) => (redencion.status || "") === "cancelled").length
         )
 
+        setPuntosPorVencer(resumenPuntos.puntosPorVencer)
+        setProximaFechaVencimiento(resumenPuntos.proximaFechaVencimiento)
+
         setPuntosRedimidos(totalRedimido)
-        setPuntosDisponibles(Math.max(acumulados - totalRedimido, 0))
+        setPuntosDisponibles(Math.max(resumenPuntos.puntosVigentes - totalRedimido, 0))
         setAutorizado(true)
       } catch {
         await supabase.auth.signOut()
@@ -364,6 +413,16 @@ export default function DashboardPage() {
               valor={String(puntosRedimidos)}
               descripcion="Total de puntos ya usados"
             />
+            <ResumenCard
+              titulo="Puntos por vencer pronto"
+              valor={String(puntosPorVencer)}
+              descripcion="Vencen en los próximos 30 días"
+            />
+            <ResumenCard
+              titulo="Próximo vencimiento"
+              valor={proximaFechaVencimiento || "Sin vencimiento cercano"}
+              descripcion="Fecha estimada más próxima"
+            />
           </section>
 
           <section
@@ -397,43 +456,116 @@ export default function DashboardPage() {
           </section>
 
           <section
-            style={{
-              background: "#fff",
-              borderRadius: "24px",
-              padding: "22px",
-              boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
-              border: "1px solid rgba(0,0,0,0.04)",
-              marginBottom: "24px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                gap: "12px",
-                alignItems: "flex-start",
-                flexWrap: "wrap",
-              }}
-            >
-              <span
-                style={{
-                  display: "inline-flex",
-                  padding: "6px 10px",
-                  borderRadius: "999px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  background: "rgba(212, 175, 55, 0.14)",
-                  color: "#7a5b00",
-                  border: "1px solid rgba(212, 175, 55, 0.24)",
-                }}
-              >
-                Información importante
-              </span>
+  style={{
+    background: "#fff",
+    borderRadius: "24px",
+    padding: "22px",
+    boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
+    border: "1px solid rgba(0,0,0,0.04)",
+    marginBottom: "24px",
+    display: "grid",
+    gap: "14px",
+  }}
+>
+  <div
+    style={{
+      display: "flex",
+      gap: "12px",
+      alignItems: "flex-start",
+      flexWrap: "wrap",
+    }}
+  >
+    <span
+      style={{
+        display: "inline-flex",
+        padding: "6px 10px",
+        borderRadius: "999px",
+        fontSize: "12px",
+        fontWeight: 700,
+        background: "rgba(212, 175, 55, 0.14)",
+        color: "#7a5b00",
+        border: "1px solid rgba(212, 175, 55, 0.24)",
+      }}
+    >
+      Información importante
+    </span>
 
-              <p style={{ margin: 0, color: "#111", lineHeight: 1.6, fontSize: "15px" }}>
-                Los premios o ítems redimidos serán enviados junto con el siguiente pedido que realices.
-              </p>
-            </div>
-          </section>
+    <p style={{ margin: 0, color: "#111", lineHeight: 1.6, fontSize: "15px" }}>
+      Los premios o ítems redimidos serán enviados junto con el siguiente pedido que realices.
+    </p>
+  </div>
+
+  {puntosPorVencer > 0 ? (
+    <div
+      style={{
+        background: "#fff7ed",
+        border: "1px solid #fed7aa",
+        borderRadius: "18px",
+        padding: "16px 18px",
+        display: "grid",
+        gap: "8px",
+      }}
+    >
+      <span
+        style={{
+          display: "inline-flex",
+          width: "fit-content",
+          padding: "6px 10px",
+          borderRadius: "999px",
+          fontSize: "12px",
+          fontWeight: 700,
+          background: "#ea580c",
+          color: "#fff",
+        }}
+      >
+        Atención
+      </span>
+
+      <h3 style={{ margin: 0, fontSize: "20px", color: "#9a3412", lineHeight: 1.2 }}>
+        Tienes puntos próximos a vencer
+      </h3>
+
+      <p style={{ margin: 0, color: "#7c2d12", lineHeight: 1.6 }}>
+        Tienes <strong>{puntosPorVencer}</strong> punto(s) que vencerán pronto
+        {proximaFechaVencimiento ? `, con una fecha estimada de vencimiento el ${proximaFechaVencimiento}` : ""}.
+      </p>
+    </div>
+  ) : (
+    <div
+      style={{
+        background: "#ecfdf3",
+        border: "1px solid #bbf7d0",
+        borderRadius: "18px",
+        padding: "16px 18px",
+        display: "grid",
+        gap: "8px",
+      }}
+    >
+      <span
+        style={{
+          display: "inline-flex",
+          width: "fit-content",
+          padding: "6px 10px",
+          borderRadius: "999px",
+          fontSize: "12px",
+          fontWeight: 700,
+          background: "#166534",
+          color: "#fff",
+        }}
+      >
+        Todo bien
+      </span>
+
+      <h3 style={{ margin: 0, fontSize: "20px", color: "#166534", lineHeight: 1.2 }}>
+        No tienes vencimientos cercanos
+      </h3>
+
+      <p style={{ margin: 0, color: "#166534", lineHeight: 1.6 }}>
+        Tus puntos no tienen vencimientos próximos dentro de los siguientes 30 días.
+      </p>
+    </div>
+  )}
+</section>
 
           <section
             style={{
@@ -513,7 +645,7 @@ function ResumenCard({
       <h3
         style={{
           margin: "10px 0 8px 0",
-          fontSize: "clamp(28px, 6vw, 34px)",
+          fontSize: "clamp(24px, 5vw, 34px)",
           color: "#111",
           lineHeight: 1.1,
           wordBreak: "break-word",
