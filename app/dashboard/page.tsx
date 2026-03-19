@@ -30,6 +30,7 @@ type Notificacion = {
   is_read: boolean
   created_at: string
   type?: string | null
+  user_email?: string
 }
 
 export default function DashboardPage() {
@@ -184,7 +185,7 @@ export default function DashboardPage() {
 
     const { data, error } = await supabase
       .from("notifications")
-      .select("id, title, message, is_read, created_at, type")
+      .select("id, title, message, is_read, created_at, type, user_email")
       .eq("user_email", email)
       .order("created_at", { ascending: false })
       .limit(20)
@@ -197,8 +198,27 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    if (autorizado && clienteEmail) {
-      cargarNotificaciones()
+    if (!autorizado || !clienteEmail) return
+    cargarNotificaciones()
+
+    const channel = supabase
+      .channel(`notifications-${clienteEmail}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_email=eq.${clienteEmail}`,
+        },
+        () => {
+          cargarNotificaciones()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
     }
   }, [autorizado, clienteEmail])
 
@@ -224,13 +244,7 @@ export default function DashboardPage() {
   }
 
   const marcarTodasLeidas = async () => {
-    const email = clienteEmail || localStorage.getItem("cliente_email") || ""
-    if (!email) return
-
-    const idsNoLeidas = notificaciones
-      .filter((n) => !n.is_read)
-      .map((n) => n.id)
-
+    const idsNoLeidas = notificaciones.filter((n) => !n.is_read).map((n) => n.id)
     if (idsNoLeidas.length === 0) return
 
     const { error } = await supabase
@@ -239,12 +253,7 @@ export default function DashboardPage() {
       .in("id", idsNoLeidas)
 
     if (!error) {
-      setNotificaciones((prev) =>
-        prev.map((n) => ({
-          ...n,
-          is_read: true,
-        }))
-      )
+      setNotificaciones((prev) => prev.map((n) => ({ ...n, is_read: true })))
     }
   }
 
@@ -394,7 +403,6 @@ export default function DashboardPage() {
                     title="Notificaciones"
                   >
                     🔔
-
                     {totalNoLeidas > 0 && (
                       <span
                         style={{
@@ -449,9 +457,7 @@ export default function DashboardPage() {
                         <div>
                           <h3 style={{ margin: 0, fontSize: "18px", color: "#111" }}>Notificaciones</h3>
                           <p style={{ margin: "4px 0 0 0", color: "#6b7280", fontSize: "13px" }}>
-                            {totalNoLeidas > 0
-                              ? `${totalNoLeidas} sin leer`
-                              : "No tienes notificaciones pendientes"}
+                            {totalNoLeidas > 0 ? `${totalNoLeidas} sin leer` : "No tienes notificaciones pendientes"}
                           </p>
                         </div>
 
@@ -482,9 +488,7 @@ export default function DashboardPage() {
                         }}
                       >
                         {cargandoNotificaciones ? (
-                          <div style={{ padding: "14px", color: "#6b7280" }}>
-                            Cargando notificaciones...
-                          </div>
+                          <div style={{ padding: "14px", color: "#6b7280" }}>Cargando notificaciones...</div>
                         ) : notificaciones.length === 0 ? (
                           <div
                             style={{
@@ -517,14 +521,7 @@ export default function DashboardPage() {
                                   marginBottom: "6px",
                                 }}
                               >
-                                <p
-                                  style={{
-                                    margin: 0,
-                                    fontWeight: 700,
-                                    color: "#111",
-                                    lineHeight: 1.4,
-                                  }}
-                                >
+                                <p style={{ margin: 0, fontWeight: 700, color: "#111", lineHeight: 1.4 }}>
                                   {notificacion.title}
                                 </p>
 
@@ -553,13 +550,7 @@ export default function DashboardPage() {
                                 {notificacion.message}
                               </p>
 
-                              <p
-                                style={{
-                                  margin: 0,
-                                  color: "#6b7280",
-                                  fontSize: "12px",
-                                }}
-                              >
+                              <p style={{ margin: 0, color: "#6b7280", fontSize: "12px" }}>
                                 {new Date(notificacion.created_at).toLocaleString("es-CO")}
                               </p>
                             </div>
@@ -599,16 +590,8 @@ export default function DashboardPage() {
               marginBottom: "24px",
             }}
           >
-            <ResumenCard
-              titulo="Puntos disponibles"
-              valor={String(puntosDisponibles)}
-              descripcion="Los que puedes usar ahora mismo"
-            />
-            <ResumenCard
-              titulo="Puntos redimidos"
-              valor={String(puntosRedimidos)}
-              descripcion="Total de puntos ya usados"
-            />
+            <ResumenCard titulo="Puntos disponibles" valor={String(puntosDisponibles)} descripcion="Los que puedes usar ahora mismo" />
+            <ResumenCard titulo="Puntos redimidos" valor={String(puntosRedimidos)} descripcion="Total de puntos ya usados" />
           </section>
 
           <section
@@ -673,29 +656,10 @@ export default function DashboardPage() {
                 gap: "16px",
               }}
             >
-              <MenuCard
-                href="/dashboard/facturas/nueva"
-                titulo="Registrar factura"
-                descripcion="Sube una nueva factura para validación."
-              />
-
-              <MenuCard
-                href="/dashboard/premios"
-                titulo="Ver premios"
-                descripcion="Consulta premios, puntos y disponibilidad."
-              />
-
-              <MenuCard
-                href="/dashboard/redenciones"
-                titulo="Mis redenciones"
-                descripcion="Revisa el estado de tus solicitudes."
-              />
-
-              <MenuCard
-                href="/dashboard/mis-facturas"
-                titulo="Mis facturas"
-                descripcion="Mira el historial y estado de tus facturas."
-              />
+              <MenuCard href="/dashboard/facturas/nueva" titulo="Registrar factura" descripcion="Sube una nueva factura para validación." />
+              <MenuCard href="/dashboard/premios" titulo="Ver premios" descripcion="Consulta premios, puntos y disponibilidad." />
+              <MenuCard href="/dashboard/redenciones" titulo="Mis redenciones" descripcion="Revisa el estado de tus solicitudes." />
+              <MenuCard href="/dashboard/mis-facturas" titulo="Mis facturas" descripcion="Mira el historial y estado de tus facturas." />
             </div>
           </section>
         </div>

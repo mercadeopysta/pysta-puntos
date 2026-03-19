@@ -129,6 +129,23 @@ export default function AdminFacturasPage() {
     }
   }, [autorizado])
 
+  const crearNotificacionFactura = async (
+    userEmail: string,
+    titulo: string,
+    mensajeNotificacion: string,
+    tipo: string
+  ) => {
+    await supabase.from("notifications").insert([
+      {
+        user_email: userEmail,
+        title: titulo,
+        message: mensajeNotificacion,
+        type: tipo,
+        is_read: false,
+      },
+    ])
+  }
+
   const traducirEstado = (estado: string) => {
     if (estado === "approved") return "Aprobada"
     if (estado === "rejected") return "Rechazada"
@@ -216,6 +233,8 @@ export default function AdminFacturasPage() {
   const aprobarFactura = async (facturaId: string) => {
     setMensaje("")
 
+    const factura = facturas.find((f) => f.id === facturaId)
+
     const { error } = await supabase
       .from("invoices")
       .update({
@@ -228,6 +247,15 @@ export default function AdminFacturasPage() {
       setTipoMensaje("error")
       setMensaje("No se pudo aprobar la factura: " + error.message)
       return
+    }
+
+    if (factura?.user_email) {
+      await crearNotificacionFactura(
+        factura.user_email,
+        "Factura aprobada",
+        `Tu factura ${factura.invoice_number} ha sido aprobada correctamente.`,
+        "invoice_approved"
+      )
     }
 
     setTipoMensaje("success")
@@ -295,6 +323,15 @@ export default function AdminFacturasPage() {
         return
       }
 
+      if (facturaARechazar.user_email) {
+        await crearNotificacionFactura(
+          facturaARechazar.user_email,
+          "Factura rechazada",
+          `Tu factura ${facturaARechazar.invoice_number} fue rechazada. Motivo: ${motivo}`,
+          "invoice_rejected"
+        )
+      }
+
       setTipoMensaje("success")
       setMensaje("Factura rechazada correctamente con motivo guardado.")
       setGuardandoRechazo(false)
@@ -310,6 +347,8 @@ export default function AdminFacturasPage() {
       return
     }
 
+    const facturasSeleccionadas = facturas.filter((f) => seleccionados.includes(f.id))
+
     const { error } = await supabase
       .from("invoices")
       .update({
@@ -323,6 +362,15 @@ export default function AdminFacturasPage() {
       setMensaje("No se pudo rechazar las facturas seleccionadas: " + error.message)
       setGuardandoRechazo(false)
       return
+    }
+
+    for (const factura of facturasSeleccionadas) {
+      await crearNotificacionFactura(
+        factura.user_email,
+        "Factura rechazada",
+        `Tu factura ${factura.invoice_number} fue rechazada. Motivo: ${motivo}`,
+        "invoice_rejected"
+      )
     }
 
     setTipoMensaje("success")
@@ -427,6 +475,8 @@ export default function AdminFacturasPage() {
         return
       }
     } else {
+      const facturasSeleccionadas = facturas.filter((f) => seleccionados.includes(f.id))
+
       const { error } = await supabase
         .from("invoices")
         .update({
@@ -440,6 +490,15 @@ export default function AdminFacturasPage() {
         setMensaje("No se pudo ejecutar la acción masiva: " + error.message)
         setEjecutandoMasivo(false)
         return
+      }
+
+      for (const factura of facturasSeleccionadas) {
+        await crearNotificacionFactura(
+          factura.user_email,
+          "Factura aprobada",
+          `Tu factura ${factura.invoice_number} ha sido aprobada correctamente.`,
+          "invoice_approved"
+        )
       }
     }
 
