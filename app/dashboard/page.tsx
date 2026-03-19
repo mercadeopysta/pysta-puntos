@@ -25,12 +25,12 @@ type SettingsRow = {
 
 type Notificacion = {
   id: string
+  user_email: string
   title: string
   message: string
+  type: string | null
   is_read: boolean
   created_at: string
-  type?: string | null
-  user_email?: string
 }
 
 export default function DashboardPage() {
@@ -105,7 +105,9 @@ export default function DashboardPage() {
 
         const { data: settingsData } = await supabase
           .from("settings")
-          .select("redemption_percentage, points_expiration_enabled, points_expiration_months")
+          .select(
+            "redemption_percentage, points_expiration_enabled, points_expiration_months"
+          )
           .limit(1)
           .single()
 
@@ -185,7 +187,7 @@ export default function DashboardPage() {
 
     const { data, error } = await supabase
       .from("notifications")
-      .select("id, title, message, is_read, created_at, type, user_email")
+      .select("id, user_email, title, message, type, is_read, created_at")
       .eq("user_email", email)
       .order("created_at", { ascending: false })
       .limit(20)
@@ -199,6 +201,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!autorizado || !clienteEmail) return
+
     cargarNotificaciones()
 
     const channel = supabase
@@ -245,6 +248,7 @@ export default function DashboardPage() {
 
   const marcarTodasLeidas = async () => {
     const idsNoLeidas = notificaciones.filter((n) => !n.is_read).map((n) => n.id)
+
     if (idsNoLeidas.length === 0) return
 
     const { error } = await supabase
@@ -253,7 +257,12 @@ export default function DashboardPage() {
       .in("id", idsNoLeidas)
 
     if (!error) {
-      setNotificaciones((prev) => prev.map((n) => ({ ...n, is_read: true })))
+      setNotificaciones((prev) =>
+        prev.map((n) => ({
+          ...n,
+          is_read: true,
+        }))
+      )
     }
   }
 
@@ -429,21 +438,7 @@ export default function DashboardPage() {
                   </button>
 
                   {notificacionesOpen && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "62px",
-                        right: 0,
-                        width: "360px",
-                        maxWidth: "calc(100vw - 28px)",
-                        background: "#fff",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "18px",
-                        boxShadow: "0 18px 40px rgba(0,0,0,0.14)",
-                        overflow: "hidden",
-                        zIndex: 50,
-                      }}
-                    >
+                    <div className="pysta-notificaciones-panel">
                       <div
                         style={{
                           padding: "16px",
@@ -457,7 +452,9 @@ export default function DashboardPage() {
                         <div>
                           <h3 style={{ margin: 0, fontSize: "18px", color: "#111" }}>Notificaciones</h3>
                           <p style={{ margin: "4px 0 0 0", color: "#6b7280", fontSize: "13px" }}>
-                            {totalNoLeidas > 0 ? `${totalNoLeidas} sin leer` : "No tienes notificaciones pendientes"}
+                            {totalNoLeidas > 0
+                              ? `${totalNoLeidas} sin leer`
+                              : "No tienes notificaciones pendientes"}
                           </p>
                         </div>
 
@@ -488,7 +485,9 @@ export default function DashboardPage() {
                         }}
                       >
                         {cargandoNotificaciones ? (
-                          <div style={{ padding: "14px", color: "#6b7280" }}>Cargando notificaciones...</div>
+                          <div style={{ padding: "14px", color: "#6b7280" }}>
+                            Cargando notificaciones...
+                          </div>
                         ) : notificaciones.length === 0 ? (
                           <div
                             style={{
@@ -521,7 +520,14 @@ export default function DashboardPage() {
                                   marginBottom: "6px",
                                 }}
                               >
-                                <p style={{ margin: 0, fontWeight: 700, color: "#111", lineHeight: 1.4 }}>
+                                <p
+                                  style={{
+                                    margin: 0,
+                                    fontWeight: 700,
+                                    color: "#111",
+                                    lineHeight: 1.4,
+                                  }}
+                                >
                                   {notificacion.title}
                                 </p>
 
@@ -550,7 +556,13 @@ export default function DashboardPage() {
                                 {notificacion.message}
                               </p>
 
-                              <p style={{ margin: 0, color: "#6b7280", fontSize: "12px" }}>
+                              <p
+                                style={{
+                                  margin: 0,
+                                  color: "#6b7280",
+                                  fontSize: "12px",
+                                }}
+                              >
                                 {new Date(notificacion.created_at).toLocaleString("es-CO")}
                               </p>
                             </div>
@@ -590,8 +602,16 @@ export default function DashboardPage() {
               marginBottom: "24px",
             }}
           >
-            <ResumenCard titulo="Puntos disponibles" valor={String(puntosDisponibles)} descripcion="Los que puedes usar ahora mismo" />
-            <ResumenCard titulo="Puntos redimidos" valor={String(puntosRedimidos)} descripcion="Total de puntos ya usados" />
+            <ResumenCard
+              titulo="Puntos disponibles"
+              valor={String(puntosDisponibles)}
+              descripcion="Los que puedes usar ahora mismo"
+            />
+            <ResumenCard
+              titulo="Puntos redimidos"
+              valor={String(puntosRedimidos)}
+              descripcion="Total de puntos ya usados"
+            />
           </section>
 
           <section
@@ -656,13 +676,59 @@ export default function DashboardPage() {
                 gap: "16px",
               }}
             >
-              <MenuCard href="/dashboard/facturas/nueva" titulo="Registrar factura" descripcion="Sube una nueva factura para validación." />
-              <MenuCard href="/dashboard/premios" titulo="Ver premios" descripcion="Consulta premios, puntos y disponibilidad." />
-              <MenuCard href="/dashboard/redenciones" titulo="Mis redenciones" descripcion="Revisa el estado de tus solicitudes." />
-              <MenuCard href="/dashboard/mis-facturas" titulo="Mis facturas" descripcion="Mira el historial y estado de tus facturas." />
+              <MenuCard
+                href="/dashboard/facturas/nueva"
+                titulo="Registrar factura"
+                descripcion="Sube una nueva factura para validación."
+              />
+
+              <MenuCard
+                href="/dashboard/premios"
+                titulo="Ver premios"
+                descripcion="Consulta premios, puntos y disponibilidad."
+              />
+
+              <MenuCard
+                href="/dashboard/redenciones"
+                titulo="Mis redenciones"
+                descripcion="Revisa el estado de tus solicitudes."
+              />
+
+              <MenuCard
+                href="/dashboard/mis-facturas"
+                titulo="Mis facturas"
+                descripcion="Mira el historial y estado de tus facturas."
+              />
             </div>
           </section>
         </div>
+
+        <style>{`
+          .pysta-notificaciones-panel {
+            position: absolute;
+            top: 62px;
+            right: 0;
+            width: 360px;
+            max-width: calc(100vw - 28px);
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 18px;
+            box-shadow: 0 18px 40px rgba(0,0,0,0.14);
+            overflow: hidden;
+            z-index: 50;
+          }
+
+          @media (max-width: 640px) {
+            .pysta-notificaciones-panel {
+              position: fixed;
+              top: 92px;
+              left: 14px;
+              right: 14px;
+              width: auto;
+              max-width: none;
+            }
+          }
+        `}</style>
       </main>
     </>
   )
