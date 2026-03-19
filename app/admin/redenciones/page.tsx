@@ -19,6 +19,7 @@ type Redencion = {
   created_at: string | null
   redemption_group_id: string | null
   admin_note?: string | null
+  short_code?: string | null
 }
 
 type ProfileRow = {
@@ -35,11 +36,13 @@ type GrupoItem = {
   points_used: number
   status: string
   admin_note?: string
+  short_code?: string
 }
 
 type GrupoRedencion = {
   key: string
   group_id: string
+  display_code: string
   user_email: string
   created_at: string
   date_label: string
@@ -89,38 +92,11 @@ export default function AdminRedencionesPage() {
   useEffect(() => {
     const validar = async () => {
       const ok = await validarAccesoAdmin(router)
-      if (ok) {
-        setAutorizado(true)
-      }
+      if (ok) setAutorizado(true)
     }
 
     validar()
   }, [router])
-
-  const crearNotificacionCliente = async ({
-    userEmail,
-    title,
-    message,
-    type = "info",
-  }: {
-    userEmail: string
-    title: string
-    message: string
-    type?: string
-  }) => {
-    const correo = (userEmail || "").trim().toLowerCase()
-    if (!correo) return
-
-    await supabase.from("notifications").insert([
-      {
-        user_email: correo,
-        title,
-        message,
-        type,
-        is_read: false,
-      },
-    ])
-  }
 
   const cargarDatos = async () => {
     setCargando(true)
@@ -129,7 +105,7 @@ export default function AdminRedencionesPage() {
     try {
       const { data: redencionesData, error: redencionesError } = await supabase
         .from("redemptions")
-        .select("id, user_email, reward_id, reward_name, points_used, status, created_at, redemption_group_id, admin_note")
+        .select("id, user_email, reward_id, reward_name, points_used, status, created_at, redemption_group_id, admin_note, short_code")
         .order("created_at", { ascending: false })
 
       if (redencionesError) {
@@ -149,6 +125,7 @@ export default function AdminRedencionesPage() {
         created_at: r.created_at || new Date().toISOString(),
         redemption_group_id: r.redemption_group_id || null,
         admin_note: r.admin_note || "",
+        short_code: r.short_code || "",
       }))
 
       setRedenciones(redencionesRows)
@@ -193,9 +170,7 @@ export default function AdminRedencionesPage() {
   }
 
   useEffect(() => {
-    if (autorizado) {
-      cargarDatos()
-    }
+    if (autorizado) cargarDatos()
   }, [autorizado])
 
   const traducirEstado = (status: string) => {
@@ -238,6 +213,7 @@ export default function AdminRedencionesPage() {
         grouped.set(groupId, {
           key: groupId,
           group_id: groupId,
+          display_code: redencion.short_code || groupId,
           user_email: redencion.user_email || "",
           created_at: redencion.created_at || new Date().toISOString(),
           date_label: fecha.toLocaleDateString("es-CO"),
@@ -261,6 +237,7 @@ export default function AdminRedencionesPage() {
         points_used: Number(redencion.points_used || 0),
         status: redencion.status || "requested",
         admin_note: redencion.admin_note || "",
+        short_code: redencion.short_code || "",
       })
 
       current.points_total += Number(redencion.points_used || 0)
@@ -271,6 +248,10 @@ export default function AdminRedencionesPage() {
 
       if (!current.admin_note && redencion.admin_note) {
         current.admin_note = redencion.admin_note
+      }
+
+      if (!current.display_code && redencion.short_code) {
+        current.display_code = redencion.short_code
       }
     })
 
@@ -297,6 +278,7 @@ export default function AdminRedencionesPage() {
 
       const coincideTexto =
         !texto ||
+        (grupo.display_code || "").toLowerCase().includes(texto) ||
         (grupo.group_id || "").toLowerCase().includes(texto) ||
         (grupo.user_email || "").toLowerCase().includes(texto) ||
         (grupo.customer_name || "").toLowerCase().includes(texto) ||
@@ -337,77 +319,18 @@ export default function AdminRedencionesPage() {
 
   const estadoStyles = (estado: string) => {
     if (estado === "approved") {
-      return {
-        background: "#ecfdf3",
-        color: "#166534",
-        border: "1px solid #bbf7d0",
-      }
+      return { background: "#ecfdf3", color: "#166534", border: "1px solid #bbf7d0" }
     }
 
     if (estado === "cancelled") {
-      return {
-        background: "#fef2f2",
-        color: "#991b1b",
-        border: "1px solid #fecaca",
-      }
+      return { background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca" }
     }
 
     if (estado === "shipped" || estado === "delivered") {
-      return {
-        background: "#eff6ff",
-        color: "#1d4ed8",
-        border: "1px solid #bfdbfe",
-      }
+      return { background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }
     }
 
-    return {
-      background: "#fff7ed",
-      color: "#9a3412",
-      border: "1px solid #fed7aa",
-    }
-  }
-
-  const notificarCambioEstadoGrupo = async (
-    grupo: GrupoRedencion,
-    nuevoEstado: "approved" | "shipped" | "delivered" | "cancelled",
-    motivo?: string
-  ) => {
-    let titulo = "Actualización de redención"
-    let texto = `Tu solicitud ${grupo.group_id} fue actualizada a estado ${traducirEstado(nuevoEstado)}.`
-    let tipo: "info" | "success" | "error" = "info"
-
-    if (nuevoEstado === "approved") {
-      titulo = "Redención aprobada"
-      texto = `Tu solicitud ${grupo.group_id} fue aprobada.`
-      tipo = "success"
-    }
-
-    if (nuevoEstado === "shipped") {
-      titulo = "Redención enviada"
-      texto = `Tu solicitud ${grupo.group_id} fue marcada como enviada.`
-      tipo = "info"
-    }
-
-    if (nuevoEstado === "delivered") {
-      titulo = "Redención entregada"
-      texto = `Tu solicitud ${grupo.group_id} fue marcada como entregada.`
-      tipo = "success"
-    }
-
-    if (nuevoEstado === "cancelled") {
-      titulo = "Redención cancelada"
-      texto = motivo
-        ? `Tu solicitud ${grupo.group_id} fue cancelada. Motivo: ${motivo}`
-        : `Tu solicitud ${grupo.group_id} fue cancelada.`
-      tipo = "error"
-    }
-
-    await crearNotificacionCliente({
-      userEmail: grupo.user_email,
-      title: titulo,
-      message: texto,
-      type: tipo,
-    })
+    return { background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa" }
   }
 
   const actualizarGrupoEstado = async (
@@ -434,8 +357,6 @@ export default function AdminRedencionesPage() {
       setMensaje("No se pudo actualizar la solicitud: " + error.message)
       return
     }
-
-    await notificarCambioEstadoGrupo(grupo, nuevoEstado)
 
     setTipoMensaje("success")
     setMensaje(`Solicitud actualizada a ${traducirEstado(nuevoEstado)}.`)
@@ -537,8 +458,6 @@ export default function AdminRedencionesPage() {
           return
         }
 
-        await notificarCambioEstadoGrupo(grupoACancelar, "cancelled", motivo)
-
         setTipoMensaje("success")
         setMensaje("Solicitud cancelada correctamente con motivo guardado.")
         setGuardandoCancelacion(false)
@@ -582,10 +501,6 @@ export default function AdminRedencionesPage() {
         setMensaje("No se pudo cancelar las solicitudes seleccionadas: " + error.message)
         setGuardandoCancelacion(false)
         return
-      }
-
-      for (const grupo of gruposSeleccionados) {
-        await notificarCambioEstadoGrupo(grupo, "cancelled", motivo)
       }
 
       setTipoMensaje("success")
@@ -707,10 +622,6 @@ export default function AdminRedencionesPage() {
       return
     }
 
-    for (const grupo of gruposSeleccionados) {
-      await notificarCambioEstadoGrupo(grupo, bulkAction)
-    }
-
     setTipoMensaje("success")
     setMensaje(`Acción masiva aplicada correctamente a ${seleccionados.length} solicitud(es).`)
     setSeleccionados([])
@@ -728,6 +639,7 @@ export default function AdminRedencionesPage() {
     }
 
     const filas = gruposFiltrados.map((grupo) => ({
+      codigo: grupo.display_code || "",
       solicitud_id: grupo.group_id,
       fecha: grupo.date_label,
       correo: grupo.user_email,
@@ -774,9 +686,7 @@ export default function AdminRedencionesPage() {
   if (!autorizado) {
     return (
       <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div className="pysta-card" style={{ padding: "24px 28px" }}>
-          Validando acceso...
-        </div>
+        <div className="pysta-card" style={{ padding: "24px 28px" }}>Validando acceso...</div>
       </main>
     )
   }
@@ -787,14 +697,7 @@ export default function AdminRedencionesPage() {
         <div className="pysta-shell" style={{ maxWidth: "1480px" }}>
           <AdminMenu />
 
-          <section
-            className="pysta-card"
-            style={{
-              padding: "30px",
-              marginBottom: "22px",
-              background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
-            }}
-          >
+          <section className="pysta-card" style={{ padding: "30px", marginBottom: "22px", background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)" }}>
             <div className="pysta-topbar">
               <div style={{ display: "grid", gap: "10px" }}>
                 <span className="pysta-badge">Gestión de redenciones</span>
@@ -805,23 +708,13 @@ export default function AdminRedencionesPage() {
               </div>
 
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                <button onClick={cargarDatos} className="pysta-btn pysta-btn-light">
-                  Refrescar
-                </button>
-
+                <button onClick={cargarDatos} className="pysta-btn pysta-btn-light">Refrescar</button>
                 <AdminLogoutButton />
               </div>
             </div>
           </section>
 
-          <section
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: "16px",
-              marginBottom: "22px",
-            }}
-          >
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", marginBottom: "22px" }}>
             <ResumenCard titulo="Solicitudes" valor={String(totalSolicitudes)} descripcion="Solicitudes agrupadas" />
             <ResumenCard titulo="Ítems redimidos" valor={String(totalItems)} descripcion="Total de premios solicitados" />
             <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="Solicitudes por revisar" />
@@ -832,23 +725,16 @@ export default function AdminRedencionesPage() {
             <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
               <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
               <p style={{ margin: 0, color: "#6b7280" }}>
-                Busca por ID de solicitud, correo, cliente, documento, asesor, premios o nota admin.
+                Busca por código corto, correo, cliente, documento, asesor, premios o nota admin.
               </p>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: "16px",
-                marginBottom: "16px",
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px", marginBottom: "16px" }}>
               <div>
                 <label style={labelStyle}>Buscar</label>
                 <input
                   className="pysta-input"
-                  placeholder="Solicitud, correo, cliente, documento, asesor, premio o nota"
+                  placeholder="Código, correo, cliente, documento, asesor, premio o nota"
                   value={filtroTexto}
                   onChange={(e) => setFiltroTexto(e.target.value)}
                 />
@@ -869,55 +755,25 @@ export default function AdminRedencionesPage() {
             </div>
 
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <button
-                onClick={() => {
-                  setFiltroTexto("")
-                  setFiltroEstado("")
-                }}
-                className="pysta-btn pysta-btn-light"
-              >
+              <button onClick={() => { setFiltroTexto(""); setFiltroEstado("") }} className="pysta-btn pysta-btn-light">
                 Limpiar filtros
               </button>
-
-              <button onClick={exportarCSV} className="pysta-btn pysta-btn-gold">
-                Exportar CSV
-              </button>
+              <button onClick={exportarCSV} className="pysta-btn pysta-btn-gold">Exportar CSV</button>
             </div>
           </section>
 
           <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: "16px",
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", flexWrap: "wrap", alignItems: "center" }}>
               <div style={{ display: "grid", gap: "6px" }}>
                 <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Acciones masivas</h2>
-                <p style={{ margin: 0, color: "#6b7280" }}>
-                  Seleccionadas: {seleccionados.length}
-                </p>
+                <p style={{ margin: 0, color: "#6b7280" }}>Seleccionadas: {seleccionados.length}</p>
               </div>
 
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                <button onClick={() => abrirConfirmacionMasiva("approved")} className="pysta-btn pysta-btn-gold">
-                  Aprobar seleccionadas
-                </button>
-
-                <button onClick={() => abrirConfirmacionMasiva("shipped")} className="pysta-btn pysta-btn-dark">
-                  Marcar enviadas
-                </button>
-
-                <button onClick={() => abrirConfirmacionMasiva("delivered")} className="pysta-btn pysta-btn-light">
-                  Marcar entregadas
-                </button>
-
-                <button onClick={abrirModalCancelacionMasiva} className="pysta-btn pysta-btn-danger">
-                  Cancelar seleccionadas
-                </button>
+                <button onClick={() => abrirConfirmacionMasiva("approved")} className="pysta-btn pysta-btn-gold">Aprobar seleccionadas</button>
+                <button onClick={() => abrirConfirmacionMasiva("shipped")} className="pysta-btn pysta-btn-dark">Marcar enviadas</button>
+                <button onClick={() => abrirConfirmacionMasiva("delivered")} className="pysta-btn pysta-btn-light">Marcar entregadas</button>
+                <button onClick={abrirModalCancelacionMasiva} className="pysta-btn pysta-btn-danger">Cancelar seleccionadas</button>
               </div>
             </div>
           </section>
@@ -929,33 +785,14 @@ export default function AdminRedencionesPage() {
           )}
 
           <section className="pysta-card" style={{ padding: "0", overflow: "hidden" }}>
-            <div
-              style={{
-                padding: "22px 24px",
-                borderBottom: "1px solid #e5e7eb",
-                background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                }}
-              >
+            <div style={{ padding: "22px 24px", borderBottom: "1px solid #e5e7eb", background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
                 <div>
                   <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Listado de solicitudes</h2>
-                  <p style={{ margin: "6px 0 0 0", color: "#6b7280" }}>
-                    Total encontradas: {gruposFiltrados.length}
-                  </p>
+                  <p style={{ margin: "6px 0 0 0", color: "#6b7280" }}>Total encontradas: {gruposFiltrados.length}</p>
                 </div>
 
-                <button
-                  onClick={toggleSeleccionarTodosVisibles}
-                  className="pysta-btn pysta-btn-light"
-                >
+                <button onClick={toggleSeleccionarTodosVisibles} className="pysta-btn pysta-btn-light">
                   {todosVisiblesSeleccionados ? "Quitar selección visibles" : "Seleccionar visibles"}
                 </button>
               </div>
@@ -982,16 +819,7 @@ export default function AdminRedencionesPage() {
                           boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
                         }}
                       >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: "14px",
-                            flexWrap: "wrap",
-                            marginBottom: "14px",
-                            alignItems: "flex-start",
-                          }}
-                        >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: "14px", flexWrap: "wrap", marginBottom: "14px", alignItems: "flex-start" }}>
                           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
                             <input
                               type="checkbox"
@@ -1002,7 +830,7 @@ export default function AdminRedencionesPage() {
 
                             <div style={{ display: "grid", gap: "8px" }}>
                               <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
-                                {grupo.date_label}
+                                {grupo.display_code || grupo.group_id}
                               </h3>
 
                               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -1025,62 +853,37 @@ export default function AdminRedencionesPage() {
 
                           <div className="pysta-actions">
                             {grupo.status !== "approved" && grupo.status !== "cancelled" && (
-                              <button
-                                onClick={() => actualizarGrupoEstado(grupo, "approved")}
-                                className="pysta-btn pysta-btn-gold"
-                                style={smallActionBtn}
-                              >
+                              <button onClick={() => actualizarGrupoEstado(grupo, "approved")} className="pysta-btn pysta-btn-gold" style={smallActionBtn}>
                                 Aprobar
                               </button>
                             )}
 
                             {grupo.status !== "shipped" && grupo.status !== "cancelled" && (
-                              <button
-                                onClick={() => actualizarGrupoEstado(grupo, "shipped")}
-                                className="pysta-btn pysta-btn-dark"
-                                style={smallActionBtn}
-                              >
+                              <button onClick={() => actualizarGrupoEstado(grupo, "shipped")} className="pysta-btn pysta-btn-dark" style={smallActionBtn}>
                                 Enviar
                               </button>
                             )}
 
                             {grupo.status !== "delivered" && grupo.status !== "cancelled" && (
-                              <button
-                                onClick={() => actualizarGrupoEstado(grupo, "delivered")}
-                                className="pysta-btn pysta-btn-light"
-                                style={smallActionBtn}
-                              >
+                              <button onClick={() => actualizarGrupoEstado(grupo, "delivered")} className="pysta-btn pysta-btn-light" style={smallActionBtn}>
                                 Entregar
                               </button>
                             )}
 
                             {grupo.status !== "cancelled" && (
-                              <button
-                                onClick={() => abrirModalCancelacionIndividual(grupo)}
-                                className="pysta-btn pysta-btn-danger"
-                                style={smallActionBtn}
-                              >
+                              <button onClick={() => abrirModalCancelacionIndividual(grupo)} className="pysta-btn pysta-btn-danger" style={smallActionBtn}>
                                 Cancelar
                               </button>
                             )}
 
-                            <button
-                              onClick={() => pedirEliminarGrupo(grupo)}
-                              className="pysta-btn pysta-btn-light"
-                              style={smallActionBtn}
-                            >
+                            <button onClick={() => pedirEliminarGrupo(grupo)} className="pysta-btn pysta-btn-light" style={smallActionBtn}>
                               Eliminar
                             </button>
                           </div>
                         </div>
 
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                            gap: "12px",
-                          }}
-                        >
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+                          <InfoItem label="Código corto" value={grupo.display_code || "-"} />
                           <InfoItem label="Solicitud ID" value={grupo.group_id} />
                           <InfoItem label="Ítems en la solicitud" value={String((grupo.items || []).length)} />
                           <InfoItem label="Correo" value={grupo.user_email || "-"} />
@@ -1093,34 +896,14 @@ export default function AdminRedencionesPage() {
                         </div>
 
                         {grupo.admin_note ? (
-                          <div
-                            style={{
-                              marginTop: "12px",
-                              background: "#f9fafb",
-                              border: "1px solid #e5e7eb",
-                              borderRadius: "14px",
-                              padding: "12px 14px",
-                            }}
-                          >
-                            <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
-                              Nota administrativa
-                            </p>
+                          <div style={{ marginTop: "12px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "12px 14px" }}>
+                            <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>Nota administrativa</p>
                             <p style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>{grupo.admin_note}</p>
                           </div>
                         ) : null}
 
-                        <div
-                          style={{
-                            marginTop: "12px",
-                            background: "#f9fafb",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: "14px",
-                            padding: "12px 14px",
-                          }}
-                        >
-                          <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
-                            Premios solicitados
-                          </p>
+                        <div style={{ marginTop: "12px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "12px 14px" }}>
+                          <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>Premios solicitados</p>
 
                           <div style={{ display: "grid", gap: "6px" }}>
                             {resumirPremios(grupo.items || []).map((texto, index) => (
@@ -1155,11 +938,7 @@ export default function AdminRedencionesPage() {
       <ConfirmModal
         open={confirmDeleteOpen}
         title="Eliminar solicitud"
-        message={
-          grupoAEliminar
-            ? `¿Seguro que deseas eliminar completamente la solicitud ${grupoAEliminar.group_id}? Esta acción no se puede deshacer.`
-            : ""
-        }
+        message={grupoAEliminar ? `¿Seguro que deseas eliminar completamente la solicitud ${grupoAEliminar.display_code || grupoAEliminar.group_id}? Esta acción no se puede deshacer.` : ""}
         confirmText="Sí, eliminar"
         cancelText="Cancelar"
         danger
@@ -1181,23 +960,14 @@ export default function AdminRedencionesPage() {
             padding: "20px",
           }}
         >
-          <div
-            className="pysta-card"
-            style={{
-              width: "100%",
-              maxWidth: "620px",
-              padding: "24px",
-              background: "#fff",
-              borderRadius: "20px",
-            }}
-          >
+          <div className="pysta-card" style={{ width: "100%", maxWidth: "620px", padding: "24px", background: "#fff", borderRadius: "20px" }}>
             <div style={{ display: "grid", gap: "8px", marginBottom: "16px" }}>
               <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>
                 {cancelMode === "single" ? "Cancelar solicitud" : "Cancelar solicitudes seleccionadas"}
               </h2>
               <p style={{ margin: 0, color: "#6b7280", lineHeight: 1.5 }}>
                 {cancelMode === "single"
-                  ? `Escribe el motivo de cancelación para la solicitud ${grupoACancelar?.group_id || ""}.`
+                  ? `Escribe el motivo de cancelación para la solicitud ${grupoACancelar?.display_code || grupoACancelar?.group_id || ""}.`
                   : `Escribe el motivo de cancelación para ${seleccionados.length} solicitud(es).`}
               </p>
             </div>
@@ -1224,11 +994,7 @@ export default function AdminRedencionesPage() {
                 {guardandoCancelacion ? "Guardando..." : "Guardar cancelación"}
               </button>
 
-              <button
-                onClick={cerrarModalCancelacion}
-                className="pysta-btn pysta-btn-light"
-                disabled={guardandoCancelacion}
-              >
+              <button onClick={cerrarModalCancelacion} className="pysta-btn pysta-btn-light" disabled={guardandoCancelacion}>
                 Cancelar
               </button>
             </div>
@@ -1249,13 +1015,7 @@ function ResumenCard({
   descripcion: string
 }) {
   return (
-    <div
-      className="pysta-card"
-      style={{
-        padding: "22px",
-        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
-      }}
-    >
+    <div className="pysta-card" style={{ padding: "22px", background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)" }}>
       <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
       <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
       <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
@@ -1265,20 +1025,9 @@ function ResumenCard({
 
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      style={{
-        background: "#f9fafb",
-        border: "1px solid #e5e7eb",
-        borderRadius: "14px",
-        padding: "12px 14px",
-      }}
-    >
-      <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
-        {label}
-      </p>
-      <p style={{ margin: 0, fontSize: "15px", color: "#111", lineHeight: 1.5, wordBreak: "break-word" }}>
-        {value}
-      </p>
+    <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "12px 14px" }}>
+      <p style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>{label}</p>
+      <p style={{ margin: 0, fontSize: "15px", color: "#111", lineHeight: 1.5, wordBreak: "break-word" }}>{value}</p>
     </div>
   )
 }

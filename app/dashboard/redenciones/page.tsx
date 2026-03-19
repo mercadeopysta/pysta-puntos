@@ -4,130 +4,116 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
+import LogoutButton from "../../../components/LogoutButton"
 
 type Redencion = {
   id: string
-  user_email: string
-  reward_id: string | null
   reward_name: string | null
   points_used: number | null
   status: string | null
   created_at: string | null
   redemption_group_id: string | null
-  admin_note: string | null
+  admin_note?: string | null
+  short_code?: string | null
 }
 
 type GrupoItem = {
   id: string
-  reward_id: string | null
   reward_name: string
   points_used: number
   status: string
-  admin_note: string
+  short_code?: string
 }
 
 type GrupoRedencion = {
   key: string
   group_id: string
-  user_email: string
+  display_code: string
   created_at: string
-  date_label: string
+  fecha: string
   status: string
   items: GrupoItem[]
-  points_total: number
+  total_puntos: number
   admin_note: string
 }
 
-export default function RedencionesPage() {
+export default function DashboardRedencionesPage() {
   const router = useRouter()
 
-  const [cargandoSesion, setCargandoSesion] = useState(true)
-  const [userEmail, setUserEmail] = useState("")
+  const [autorizado, setAutorizado] = useState(false)
+  const [nombre, setNombre] = useState("")
   const [redenciones, setRedenciones] = useState<Redencion[]>([])
   const [cargando, setCargando] = useState(true)
 
-  const [mensaje, setMensaje] = useState("")
-  const [filtroEstado, setFiltroEstado] = useState("")
-  const [filtroTexto, setFiltroTexto] = useState("")
-
   useEffect(() => {
-    const email = localStorage.getItem("user_email") || localStorage.getItem("cliente_email") || ""
+    const cargar = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
 
-    if (!email) {
-      router.replace("/login")
-      return
+        if (!session?.user) {
+          router.replace("/login")
+          return
+        }
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("email, full_name, is_active, is_approved")
+          .eq("id", session.user.id)
+          .maybeSingle()
+
+        if (!profile || !profile.is_active || !profile.is_approved) {
+          await supabase.auth.signOut()
+          router.replace("/login")
+          return
+        }
+
+        setNombre(profile.full_name || "")
+
+        const { data, error } = await supabase
+          .from("redemptions")
+          .select("id, reward_name, points_used, status, created_at, redemption_group_id, admin_note, short_code")
+          .eq("user_email", profile.email)
+          .order("created_at", { ascending: false })
+
+        if (!error) {
+          setRedenciones((data as Redencion[]) || [])
+        }
+
+        setAutorizado(true)
+      } finally {
+        setCargando(false)
+      }
     }
 
-    setUserEmail(email)
-    setCargandoSesion(false)
+    cargar()
   }, [router])
 
-  const cargarRedenciones = async (email: string) => {
-    setCargando(true)
-    setMensaje("")
-
-    const { data, error } = await supabase
-      .from("redemptions")
-      .select("id, user_email, reward_id, reward_name, points_used, status, created_at, redemption_group_id, admin_note")
-      .eq("user_email", email)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      setMensaje("Ocurrió un error al cargar tus redenciones.")
-      setCargando(false)
-      return
-    }
-
-    setRedenciones((data as Redencion[]) || [])
-    setCargando(false)
-  }
-
-  useEffect(() => {
-    if (!cargandoSesion && userEmail) {
-      cargarRedenciones(userEmail)
-    }
-  }, [cargandoSesion, userEmail])
-
-  const traducirEstado = (status: string) => {
-    if (status === "requested") return "Solicitada"
-    if (status === "approved") return "Aprobada"
-    if (status === "shipped") return "Enviada"
-    if (status === "delivered") return "Entregada"
-    if (status === "cancelled") return "Cancelada"
-    if (status === "mixed") return "Mixto"
-    return status || "Sin estado"
+  const traducirEstado = (estado: string) => {
+    if (estado === "requested") return "Solicitada"
+    if (estado === "approved") return "Aprobada"
+    if (estado === "shipped") return "Enviada"
+    if (estado === "delivered") return "Entregada"
+    if (estado === "cancelled") return "Cancelada"
+    if (estado === "mixed") return "Mixto"
+    return estado || "Sin estado"
   }
 
   const estadoStyles = (estado: string) => {
     if (estado === "approved") {
-      return {
-        background: "#ecfdf3",
-        color: "#166534",
-        border: "1px solid #bbf7d0",
-      }
+      return { background: "#ecfdf3", color: "#166534", border: "1px solid #bbf7d0" }
     }
 
     if (estado === "cancelled") {
-      return {
-        background: "#fef2f2",
-        color: "#991b1b",
-        border: "1px solid #fecaca",
-      }
+      return { background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca" }
     }
 
     if (estado === "shipped" || estado === "delivered") {
-      return {
-        background: "#eff6ff",
-        color: "#1d4ed8",
-        border: "1px solid #bfdbfe",
-      }
+      return { background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }
     }
 
-    return {
-      background: "#fff7ed",
-      color: "#9a3412",
-      border: "1px solid #fed7aa",
-    }
+    return { background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa" }
   }
 
   const grupos = useMemo(() => {
@@ -142,18 +128,18 @@ export default function RedencionesPage() {
       const groupId =
         redencion.redemption_group_id && redencion.redemption_group_id.trim() !== ""
           ? redencion.redemption_group_id
-          : `${redencion.user_email || "sin-email"}__${dateKey}__legacy`
+          : `legacy-${dateKey}`
 
       if (!grouped.has(groupId)) {
         grouped.set(groupId, {
           key: groupId,
           group_id: groupId,
-          user_email: redencion.user_email || "",
+          display_code: redencion.short_code || groupId,
           created_at: redencion.created_at || new Date().toISOString(),
-          date_label: fecha.toLocaleDateString("es-CO"),
+          fecha: fecha.toLocaleDateString("es-CO"),
           status: redencion.status || "requested",
           items: [],
-          points_total: 0,
+          total_puntos: 0,
           admin_note: redencion.admin_note || "",
         })
       }
@@ -163,14 +149,13 @@ export default function RedencionesPage() {
 
       current.items.push({
         id: redencion.id,
-        reward_id: redencion.reward_id || null,
         reward_name: redencion.reward_name || "Premio sin nombre",
         points_used: Number(redencion.points_used || 0),
         status: redencion.status || "requested",
-        admin_note: redencion.admin_note || "",
+        short_code: redencion.short_code || "",
       })
 
-      current.points_total += Number(redencion.points_used || 0)
+      current.total_puntos += Number(redencion.points_used || 0)
 
       if (current.status !== (redencion.status || "requested")) {
         current.status = "mixed"
@@ -178,6 +163,10 @@ export default function RedencionesPage() {
 
       if (!current.admin_note && redencion.admin_note) {
         current.admin_note = redencion.admin_note
+      }
+
+      if (!current.display_code && redencion.short_code) {
+        current.display_code = redencion.short_code
       }
     })
 
@@ -188,344 +177,162 @@ export default function RedencionesPage() {
     const conteo: Record<string, number> = {}
 
     items.forEach((item) => {
-      const nombre = item.reward_name || "Premio sin nombre"
-      conteo[nombre] = (conteo[nombre] || 0) + 1
+      conteo[item.reward_name] = (conteo[item.reward_name] || 0) + 1
     })
 
     return Object.entries(conteo).map(([nombre, cantidad]) => `${cantidad} x ${nombre}`)
   }
 
-  const gruposFiltrados = useMemo(() => {
-    const texto = filtroTexto.trim().toLowerCase()
-    const estado = filtroEstado.trim().toLowerCase()
-
-    return grupos.filter((grupo) => {
-      const premiosTexto = resumirPremios(grupo.items || []).join(" ").toLowerCase()
-
-      const coincideTexto =
-        !texto ||
-        (grupo.group_id || "").toLowerCase().includes(texto) ||
-        (grupo.date_label || "").toLowerCase().includes(texto) ||
-        (grupo.admin_note || "").toLowerCase().includes(texto) ||
-        premiosTexto.includes(texto)
-
-      const coincideEstado = !estado || (grupo.status || "").toLowerCase() === estado
-
-      return coincideTexto && coincideEstado
-    })
-  }, [grupos, filtroTexto, filtroEstado])
-
-  const totalSolicitudes = grupos.length
-  const totalPendientes = grupos.filter((g) => g.status === "requested").length
-  const totalCanceladas = grupos.filter((g) => g.status === "cancelled").length
-  const totalPuntos = grupos.reduce((acc, grupo) => acc + Number(grupo.points_total || 0), 0)
-
-  if (cargandoSesion) {
+  if (cargando) {
     return (
-      <main className="pysta-page" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div className="pysta-card" style={{ padding: "24px 28px" }}>
-          Validando acceso...
-        </div>
+      <main style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f5f5" }}>
+        Cargando...
       </main>
     )
   }
 
+  if (!autorizado) {
+    return null
+  }
+
   return (
-    <main className="pysta-page">
-      <div className="pysta-shell" style={{ maxWidth: "1380px" }}>
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "linear-gradient(180deg, #f5f5f5 0%, #ececec 100%)",
+        padding: "20px 14px",
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <div style={{ maxWidth: "1180px", margin: "0 auto" }}>
         <section
-          className="pysta-card"
           style={{
-            padding: "30px",
+            background: "#ffffff",
+            borderRadius: "24px",
+            padding: "24px",
+            boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
             marginBottom: "22px",
-            background: "linear-gradient(135deg, #ffffff 0%, #fbfbfb 100%)",
+            border: "1px solid rgba(0,0,0,0.04)",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: "14px",
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
-            <div style={{ display: "grid", gap: "10px" }}>
-              <span className="pysta-badge">Mis redenciones</span>
-              <h1 className="pysta-section-title">Historial de redenciones</h1>
-              <p className="pysta-subtitle">
-                Consulta el estado de tus solicitudes, los premios pedidos y las observaciones administrativas.
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "18px", flexWrap: "wrap", alignItems: "center" }}>
+            <div>
+              <h1 style={{ margin: 0, fontSize: "32px", color: "#111" }}>
+                Mis redenciones{nombre ? `, ${nombre}` : ""}
+              </h1>
+              <p style={{ margin: "8px 0 0 0", color: "#6b7280" }}>
+                Revisa el estado de tus solicitudes y el código corto de cada una.
               </p>
             </div>
 
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              <button onClick={() => cargarRedenciones(userEmail)} className="pysta-btn pysta-btn-light">
-                Refrescar
-              </button>
-
-              <Link href="/dashboard" className="pysta-btn pysta-btn-dark">
-                Volver al dashboard
-              </Link>
+              <Link href="/dashboard" style={secondaryButton}>Volver al dashboard</Link>
+              <LogoutButton />
             </div>
           </div>
         </section>
 
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "16px",
-            marginBottom: "22px",
-          }}
-        >
-          <ResumenCard titulo="Solicitudes" valor={String(totalSolicitudes)} descripcion="Agrupadas por pedido" />
-          <ResumenCard titulo="Pendientes" valor={String(totalPendientes)} descripcion="En revisión" />
-          <ResumenCard titulo="Canceladas" valor={String(totalCanceladas)} descripcion="Con observación" />
-          <ResumenCard titulo="Puntos usados" valor={String(totalPuntos)} descripcion="Total acumulado" />
-        </section>
-
-        <section className="pysta-card" style={{ padding: "24px", marginBottom: "22px" }}>
-          <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
-            <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Filtros</h2>
-            <p style={{ margin: 0, color: "#6b7280" }}>
-              Busca por fecha, premios o nota administrativa, y filtra por estado.
-            </p>
-          </div>
-
-          <div
+        {grupos.length === 0 ? (
+          <section
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-              gap: "16px",
+              background: "#fff",
+              borderRadius: "24px",
+              padding: "24px",
+              boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
+              border: "1px solid rgba(0,0,0,0.04)",
             }}
           >
-            <div>
-              <label style={labelStyle}>Buscar</label>
-              <input
-                className="pysta-input"
-                placeholder="Fecha, premio o nota"
-                value={filtroTexto}
-                onChange={(e) => setFiltroTexto(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>Estado</label>
-              <select className="pysta-select" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
-                <option value="">Todos</option>
-                <option value="requested">Solicitada</option>
-                <option value="approved">Aprobada</option>
-                <option value="shipped">Enviada</option>
-                <option value="delivered">Entregada</option>
-                <option value="cancelled">Cancelada</option>
-              </select>
-            </div>
-          </div>
-        </section>
-
-        {mensaje ? (
-          <section className="pysta-card" style={{ padding: "18px 20px", marginBottom: "22px", color: "#991b1b" }}>
-            {mensaje}
+            No tienes redenciones registradas.
           </section>
-        ) : null}
+        ) : (
+          <div style={{ display: "grid", gap: "16px" }}>
+            {grupos.map((grupo) => (
+              <article
+                key={grupo.key}
+                style={{
+                  background: "#fff",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "20px",
+                  padding: "20px",
+                  boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "14px", flexWrap: "wrap", marginBottom: "14px", alignItems: "flex-start" }}>
+                  <div style={{ display: "grid", gap: "8px" }}>
+                    <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
+                      {grupo.display_code || grupo.group_id}
+                    </h3>
 
-        <section className="pysta-card" style={{ padding: "0", overflow: "hidden" }}>
-          <div
-            style={{
-              padding: "22px 24px",
-              borderBottom: "1px solid #e5e7eb",
-              background: "linear-gradient(180deg, #ffffff 0%, #fafafa 100%)",
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Listado de solicitudes</h2>
-            <p style={{ margin: "6px 0 0 0", color: "#6b7280" }}>
-              Total encontradas: {gruposFiltrados.length}
-            </p>
-          </div>
-
-          {cargando ? (
-            <div style={{ padding: "24px", color: "#333" }}>Cargando redenciones...</div>
-          ) : gruposFiltrados.length === 0 ? (
-            <div style={{ padding: "24px", color: "#333" }}>No tienes redenciones para esos filtros.</div>
-          ) : (
-            <div style={{ padding: "18px" }}>
-              <div style={{ display: "grid", gap: "14px" }}>
-                {gruposFiltrados.map((grupo) => (
-                  <article
-                    key={grupo.key}
-                    style={{
-                      background: "#fff",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "20px",
-                      padding: "20px",
-                      boxShadow: "0 8px 22px rgba(0,0,0,0.04)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: "14px",
-                        flexWrap: "wrap",
-                        marginBottom: "14px",
-                        alignItems: "flex-start",
-                      }}
-                    >
-                      <div style={{ display: "grid", gap: "8px" }}>
-                        <h3 style={{ margin: 0, color: "#111", fontSize: "22px" }}>
-                          {grupo.date_label}
-                        </h3>
-
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                              fontSize: "12px",
-                              fontWeight: "bold",
-                              ...estadoStyles(grupo.status),
-                            }}
-                          >
-                            {traducirEstado(grupo.status)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-                        gap: "12px",
-                      }}
-                    >
-                      <InfoItem label="Solicitud ID" value={grupo.group_id} />
-                      <InfoItem label="Cantidad de ítems" value={String(grupo.items.length)} />
-                      <InfoItem label="Puntos usados" value={String(grupo.points_total)} />
-                      <InfoItem label="Estado actual" value={traducirEstado(grupo.status)} />
-                    </div>
-
-                    {grupo.status === "cancelled" && grupo.admin_note ? (
-                      <div
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <span
                         style={{
-                          marginTop: "12px",
-                          background: "linear-gradient(180deg, #fff5f5 0%, #fef2f2 100%)",
-                          border: "1px solid #fecaca",
-                          borderRadius: "16px",
-                          padding: "14px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "6px 10px",
+                          borderRadius: "999px",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          ...estadoStyles(grupo.status),
                         }}
                       >
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "8px" }}>
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                              fontSize: "12px",
-                              fontWeight: 700,
-                              background: "#991b1b",
-                              color: "#fff",
-                            }}
-                          >
-                            Gestión administrativa
-                          </span>
-
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                              fontSize: "12px",
-                              fontWeight: 700,
-                              background: "#fee2e2",
-                              color: "#991b1b",
-                              border: "1px solid #fecaca",
-                            }}
-                          >
-                            Solicitud cancelada
-                          </span>
-                        </div>
-
-                        <p
-                          style={{
-                            margin: "0 0 8px 0",
-                            fontSize: "13px",
-                            color: "#991b1b",
-                            fontWeight: 700,
-                          }}
-                        >
-                          Motivo informado por administración
-                        </p>
-
-                        <p
-                          style={{
-                            margin: 0,
-                            color: "#111",
-                            lineHeight: 1.5,
-                          }}
-                        >
-                          {grupo.admin_note}
-                        </p>
-                      </div>
-                    ) : null}
-
-                    <div
-                      style={{
-                        marginTop: "12px",
-                        background: "#f9fafb",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "14px",
-                        padding: "12px 14px",
-                      }}
-                    >
-                      <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
-                        Premios solicitados
-                      </p>
-
-                      <div style={{ display: "grid", gap: "6px" }}>
-                        {resumirPremios(grupo.items).map((texto, index) => (
-                          <p key={`${grupo.key}-${index}`} style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>
-                            • {texto}
-                          </p>
-                        ))}
-                      </div>
+                        {traducirEstado(grupo.status)}
+                      </span>
                     </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+                  <InfoItem label="Código corto" value={grupo.display_code || "-"} />
+                  <InfoItem label="Fecha" value={grupo.fecha} />
+                  <InfoItem label="Cantidad de ítems" value={String(grupo.items.length)} />
+                  <InfoItem label="Puntos usados" value={String(grupo.total_puntos)} />
+                  <InfoItem label="Estado" value={traducirEstado(grupo.status)} />
+                </div>
+
+                {grupo.admin_note ? (
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      background: "#f9fafb",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "14px",
+                      padding: "12px 14px",
+                    }}
+                  >
+                    <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
+                      Nota administrativa
+                    </p>
+                    <p style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>{grupo.admin_note}</p>
+                  </div>
+                ) : null}
+
+                <div
+                  style={{
+                    marginTop: "12px",
+                    background: "#f9fafb",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "14px",
+                    padding: "12px 14px",
+                  }}
+                >
+                  <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#6b7280", fontWeight: 700 }}>
+                    Premios solicitados
+                  </p>
+
+                  <div style={{ display: "grid", gap: "6px" }}>
+                    {resumirPremios(grupo.items).map((texto, index) => (
+                      <p key={`${grupo.key}-${index}`} style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>
+                        • {texto}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </main>
-  )
-}
-
-function ResumenCard({
-  titulo,
-  valor,
-  descripcion,
-}: {
-  titulo: string
-  valor: string
-  descripcion: string
-}) {
-  return (
-    <div
-      className="pysta-card"
-      style={{
-        padding: "22px",
-        background: "linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%)",
-      }}
-    >
-      <p style={{ margin: 0, color: "#6b7280", fontSize: "14px", fontWeight: 700 }}>{titulo}</p>
-      <h3 style={{ margin: "10px 0 8px 0", fontSize: "34px", color: "#111" }}>{valor}</h3>
-      <p style={{ margin: 0, color: "#555", fontSize: "14px", lineHeight: 1.4 }}>{descripcion}</p>
-    </div>
   )
 }
 
@@ -549,10 +356,12 @@ function InfoItem({ label, value }: { label: string; value: string }) {
   )
 }
 
-const labelStyle = {
-  display: "block",
-  marginBottom: "8px",
+const secondaryButton = {
+  background: "#e9e9e9",
   color: "#111",
-  fontWeight: "bold" as const,
-  fontSize: "14px",
+  textDecoration: "none",
+  padding: "12px 18px",
+  borderRadius: "14px",
+  display: "inline-block",
+  fontWeight: 700 as const,
 }
