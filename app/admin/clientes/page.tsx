@@ -20,9 +20,10 @@ type Cliente = {
   is_active: boolean
   is_approved: boolean
   created_at?: string | null
+  redemption_percentage?: number | null
 }
 
-type BulkAction = "approve" | "activate" | "deactivate" | "unapprove" | "delete" | ""
+type BulkAction = "approve" | "activate" | "deactivate" | "unapprove" | ""
 
 export default function AdminClientesPage() {
   const router = useRouter()
@@ -44,6 +45,7 @@ export default function AdminClientesPage() {
   const [editTelefono, setEditTelefono] = useState("")
   const [editTipoCliente, setEditTipoCliente] = useState("")
   const [editAsesor, setEditAsesor] = useState("")
+  const [editPorcentajeRedencion, setEditPorcentajeRedencion] = useState("")
   const [guardandoEdicion, setGuardandoEdicion] = useState(false)
 
   const [seleccionados, setSeleccionados] = useState<string[]>([])
@@ -78,6 +80,12 @@ export default function AdminClientesPage() {
       is_active: typeof row.is_active === "boolean" ? row.is_active : true,
       is_approved: typeof row.is_approved === "boolean" ? row.is_approved : false,
       created_at: (row.created_at as string | null) ?? null,
+      redemption_percentage:
+        typeof row.redemption_percentage === "number"
+          ? row.redemption_percentage
+          : row.redemption_percentage !== null && row.redemption_percentage !== undefined
+          ? Number(row.redemption_percentage)
+          : null,
     }
   }
 
@@ -87,7 +95,9 @@ export default function AdminClientesPage() {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, full_name, email, document_number, phone, client_type, advisor_name, is_active, is_approved, created_at")
+      .select(
+        "id, full_name, email, document_number, phone, client_type, advisor_name, is_active, is_approved, created_at, redemption_percentage"
+      )
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -196,6 +206,11 @@ export default function AdminClientesPage() {
     setEditTelefono(cliente.phone || "")
     setEditTipoCliente(cliente.client_type || "")
     setEditAsesor(cliente.advisor_name || "")
+    setEditPorcentajeRedencion(
+      cliente.redemption_percentage !== null && cliente.redemption_percentage !== undefined
+        ? String(cliente.redemption_percentage)
+        : "0"
+    )
     setMensaje("")
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
@@ -207,6 +222,7 @@ export default function AdminClientesPage() {
     setEditTelefono("")
     setEditTipoCliente("")
     setEditAsesor("")
+    setEditPorcentajeRedencion("")
   }
 
   const guardarEdicion = async () => {
@@ -236,6 +252,15 @@ export default function AdminClientesPage() {
       return
     }
 
+    const porcentajeNumero = Number(editPorcentajeRedencion || 0)
+
+    if (Number.isNaN(porcentajeNumero) || porcentajeNumero < 0) {
+      setTipoMensaje("warning")
+      setMensaje("El porcentaje de redención debe ser un número igual o mayor a 0.")
+      setGuardandoEdicion(false)
+      return
+    }
+
     const { error } = await supabase
       .from("profiles")
       .update({
@@ -244,6 +269,7 @@ export default function AdminClientesPage() {
         phone: editTelefono.trim(),
         client_type: editTipoCliente,
         advisor_name: editAsesor.trim(),
+        redemption_percentage: porcentajeNumero,
       })
       .eq("id", editandoId)
 
@@ -278,10 +304,9 @@ export default function AdminClientesPage() {
     setEliminandoCliente(true)
     setMensaje("")
 
-    const { error } = await supabase
-      .from("profiles")
-      .delete()
-      .eq("id", clienteAEliminar.id)
+    const { error } = await supabase.rpc("delete_test_client", {
+      p_client_id: clienteAEliminar.id,
+    })
 
     if (error) {
       setTipoMensaje("error")
@@ -293,6 +318,11 @@ export default function AdminClientesPage() {
     setTipoMensaje("success")
     setMensaje("Cliente eliminado correctamente.")
     setSeleccionados((prev) => prev.filter((id) => id !== clienteAEliminar.id))
+
+    if (editandoId === clienteAEliminar.id) {
+      cancelarEdicion()
+    }
+
     setConfirmDeleteOpen(false)
     setClienteAEliminar(null)
     setEliminandoCliente(false)
@@ -342,6 +372,12 @@ export default function AdminClientesPage() {
     if (!tipo) return "Sin tipo"
     if (tipo === "Ambos") return "Dato antiguo: Ambos"
     return tipo
+  }
+
+  const textoPorcentajeCliente = (porcentaje?: number | null) => {
+    const valor = Number(porcentaje || 0)
+    if (valor <= 0) return "General"
+    return `${valor}%`
   }
 
   const clientesFiltrados = useMemo(() => {
@@ -414,7 +450,6 @@ export default function AdminClientesPage() {
     if (bulkAction === "activate") return "activar"
     if (bulkAction === "deactivate") return "desactivar"
     if (bulkAction === "unapprove") return "quitar aprobación a"
-    if (bulkAction === "delete") return "eliminar"
     return ""
   }
 
@@ -423,29 +458,6 @@ export default function AdminClientesPage() {
 
     setEjecutandoMasivo(true)
     setMensaje("")
-
-    if (bulkAction === "delete") {
-      const { error } = await supabase
-        .from("profiles")
-        .delete()
-        .in("id", seleccionados)
-
-      if (error) {
-        setTipoMensaje("error")
-        setMensaje("No se pudo eliminar los clientes seleccionados: " + error.message)
-        setEjecutandoMasivo(false)
-        return
-      }
-
-      setTipoMensaje("success")
-      setMensaje(`Clientes eliminados correctamente: ${seleccionados.length}.`)
-      setSeleccionados([])
-      setBulkAction("")
-      setConfirmOpen(false)
-      setEjecutandoMasivo(false)
-      cargarClientes()
-      return
-    }
 
     let payload: { is_approved?: boolean; is_active?: boolean } = {}
 
@@ -500,6 +512,7 @@ export default function AdminClientesPage() {
       telefono: cliente.phone || "",
       tipo_cliente: textoTipoCliente(cliente.client_type),
       asesor: cliente.advisor_name || "",
+      porcentaje_redencion: textoPorcentajeCliente(cliente.redemption_percentage),
       aprobado: cliente.is_approved ? "Sí" : "No",
       activo: cliente.is_active ? "Sí" : "No",
       estado_general: textoEstadoGeneral(cliente),
@@ -597,7 +610,7 @@ export default function AdminClientesPage() {
               <div style={{ display: "grid", gap: "8px", marginBottom: "18px" }}>
                 <h2 style={{ margin: 0, fontSize: "22px", color: "#111" }}>Editar cliente</h2>
                 <p style={{ margin: 0, color: "#6b7280" }}>
-                  Actualiza la información básica del cliente seleccionado.
+                  Actualiza la información básica y el porcentaje de redención del cliente seleccionado.
                 </p>
               </div>
 
@@ -641,6 +654,21 @@ export default function AdminClientesPage() {
                 <div>
                   <label style={labelStyle}>Asesor asignado</label>
                   <input className="pysta-input" value={editAsesor} onChange={(e) => setEditAsesor(e.target.value)} />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>% redención personalizado</label>
+                  <input
+                    className="pysta-input"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editPorcentajeRedencion}
+                    onChange={(e) => setEditPorcentajeRedencion(e.target.value)}
+                  />
+                  <p style={{ margin: "8px 0 0 0", color: "#6b7280", fontSize: "13px", lineHeight: 1.5 }}>
+                    Si queda en 0, el cliente usará el porcentaje general del sistema.
+                  </p>
                 </div>
               </div>
 
@@ -758,10 +786,6 @@ export default function AdminClientesPage() {
                 <button onClick={() => abrirConfirmacionMasiva("unapprove")} className="pysta-btn pysta-btn-light">
                   Quitar aprobación
                 </button>
-
-                <button onClick={() => abrirConfirmacionMasiva("delete")} className="pysta-btn pysta-btn-danger">
-                  Eliminar seleccionados
-                </button>
               </div>
             </div>
           </section>
@@ -860,6 +884,17 @@ export default function AdminClientesPage() {
                                 >
                                   {textoEstadoGeneral(cliente)}
                                 </span>
+
+                                <span
+                                  style={{
+                                    ...miniBadge,
+                                    background: "#eff6ff",
+                                    color: "#1d4ed8",
+                                    border: "1px solid #bfdbfe",
+                                  }}
+                                >
+                                  % redención: {textoPorcentajeCliente(cliente.redemption_percentage)}
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -934,6 +969,7 @@ export default function AdminClientesPage() {
                           <InfoItem label="Tipo de cliente" value={textoTipoCliente(cliente.client_type)} />
                           <InfoItem label="Asesor" value={cliente.advisor_name || "-"} />
                           <InfoItem label="Estado" value={textoEstadoGeneral(cliente)} />
+                          <InfoItem label="% redención" value={textoPorcentajeCliente(cliente.redemption_percentage)} />
                         </div>
                       </article>
                     )
@@ -951,7 +987,6 @@ export default function AdminClientesPage() {
         message={`¿Seguro que deseas ${getBulkActionText()} ${seleccionados.length} cliente(s)?`}
         confirmText="Sí, continuar"
         cancelText="Cancelar"
-        danger={bulkAction === "delete"}
         loading={ejecutandoMasivo}
         onCancel={cerrarConfirmacionMasiva}
         onConfirm={ejecutarAccionMasiva}
@@ -962,7 +997,7 @@ export default function AdminClientesPage() {
         title="Eliminar cliente"
         message={
           clienteAEliminar
-            ? `¿Seguro que deseas eliminar a ${clienteAEliminar.full_name || clienteAEliminar.email}? Esta acción no se puede deshacer.`
+            ? `¿Seguro que deseas eliminar completamente al cliente ${clienteAEliminar.full_name || clienteAEliminar.email}? Esta acción borrará también sus facturas, redenciones y notificaciones de prueba.`
             : ""
         }
         confirmText="Sí, eliminar"
