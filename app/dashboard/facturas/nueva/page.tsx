@@ -1,7 +1,7 @@
 "use client"
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "../../../../lib/supabase"
 import LogoutButton from "../../../../components/LogoutButton"
 import InfoPopup from "../../../../components/InfoPopup"
@@ -22,12 +22,9 @@ type ExistingInvoice = {
   status: string
 }
 
-type Props = {
-  editId: string
-}
-
-export default function NuevaFacturaClient({ editId }: Props) {
+export default function NuevaFacturaClient() {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [autorizado, setAutorizado] = useState(false)
   const [invoiceNumber, setInvoiceNumber] = useState("")
@@ -44,6 +41,8 @@ export default function NuevaFacturaClient({ editId }: Props) {
   const [editInvoiceId, setEditInvoiceId] = useState("")
   const [existingFileUrl, setExistingFileUrl] = useState("")
   const [existingFileName, setExistingFileName] = useState("")
+
+  const invoiceIdToEdit = searchParams.get("edit") || ""
 
   const cerrarSesionCliente = async () => {
     await supabase.auth.signOut()
@@ -69,7 +68,7 @@ export default function NuevaFacturaClient({ editId }: Props) {
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("id, email, full_name, client_type, is_active, is_approved")
+        .select("id, email, full_name, client_type, is_active, is_approved, redemption_percentage")
         .eq("id", user.id)
         .maybeSingle()
 
@@ -97,13 +96,17 @@ export default function NuevaFacturaClient({ editId }: Props) {
         .single()
 
       const settings = settingsData as SettingsRow | null
-      setRedemptionPercentage(Number(settings?.redemption_percentage || 6))
+      const porcentajeGeneral = Number(settings?.redemption_percentage || 6)
+      const porcentajeCliente = Number(profile.redemption_percentage || 0)
+      const porcentajeFinal = porcentajeCliente > 0 ? porcentajeCliente : porcentajeGeneral
 
-      if (editId) {
+      setRedemptionPercentage(porcentajeFinal)
+
+      if (invoiceIdToEdit) {
         const { data: facturaEdit, error: facturaEditError } = await supabase
           .from("invoices")
           .select("id, user_email, invoice_number, invoice_date, amount_without_vat, notes, file_url, file_name, status")
-          .eq("id", editId)
+          .eq("id", invoiceIdToEdit)
           .eq("user_email", profile.email)
           .eq("status", "rejected")
           .maybeSingle()
@@ -128,7 +131,7 @@ export default function NuevaFacturaClient({ editId }: Props) {
 
   useEffect(() => {
     validarCliente()
-  }, [editId])
+  }, [invoiceIdToEdit])
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null
@@ -276,7 +279,7 @@ export default function NuevaFacturaClient({ editId }: Props) {
         return
       }
 
-      setMensaje("Factura registrada correctamente. Quedó pendiente de aprobación.")
+      setMensaje("Factura registrada correctamente. Quedó pendiente de aprobación por administración.")
       setInvoiceNumber("")
       setInvoiceDate("")
       setAmountWithoutVat("")

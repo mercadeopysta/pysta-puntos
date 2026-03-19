@@ -97,6 +97,31 @@ export default function AdminRedencionesPage() {
     validar()
   }, [router])
 
+  const crearNotificacionCliente = async ({
+    userEmail,
+    title,
+    message,
+    type = "info",
+  }: {
+    userEmail: string
+    title: string
+    message: string
+    type?: string
+  }) => {
+    const correo = (userEmail || "").trim().toLowerCase()
+    if (!correo) return
+
+    await supabase.from("notifications").insert([
+      {
+        user_email: correo,
+        title,
+        message,
+        type,
+        is_read: false,
+      },
+    ])
+  }
+
   const cargarDatos = async () => {
     setCargando(true)
     setMensaje("")
@@ -342,6 +367,49 @@ export default function AdminRedencionesPage() {
     }
   }
 
+  const notificarCambioEstadoGrupo = async (
+    grupo: GrupoRedencion,
+    nuevoEstado: "approved" | "shipped" | "delivered" | "cancelled",
+    motivo?: string
+  ) => {
+    let titulo = "Actualización de redención"
+    let texto = `Tu solicitud ${grupo.group_id} fue actualizada a estado ${traducirEstado(nuevoEstado)}.`
+    let tipo: "info" | "success" | "error" = "info"
+
+    if (nuevoEstado === "approved") {
+      titulo = "Redención aprobada"
+      texto = `Tu solicitud ${grupo.group_id} fue aprobada.`
+      tipo = "success"
+    }
+
+    if (nuevoEstado === "shipped") {
+      titulo = "Redención enviada"
+      texto = `Tu solicitud ${grupo.group_id} fue marcada como enviada.`
+      tipo = "info"
+    }
+
+    if (nuevoEstado === "delivered") {
+      titulo = "Redención entregada"
+      texto = `Tu solicitud ${grupo.group_id} fue marcada como entregada.`
+      tipo = "success"
+    }
+
+    if (nuevoEstado === "cancelled") {
+      titulo = "Redención cancelada"
+      texto = motivo
+        ? `Tu solicitud ${grupo.group_id} fue cancelada. Motivo: ${motivo}`
+        : `Tu solicitud ${grupo.group_id} fue cancelada.`
+      tipo = "error"
+    }
+
+    await crearNotificacionCliente({
+      userEmail: grupo.user_email,
+      title: titulo,
+      message: texto,
+      type: tipo,
+    })
+  }
+
   const actualizarGrupoEstado = async (
     grupo: GrupoRedencion,
     nuevoEstado: "approved" | "shipped" | "delivered"
@@ -366,6 +434,8 @@ export default function AdminRedencionesPage() {
       setMensaje("No se pudo actualizar la solicitud: " + error.message)
       return
     }
+
+    await notificarCambioEstadoGrupo(grupo, nuevoEstado)
 
     setTipoMensaje("success")
     setMensaje(`Solicitud actualizada a ${traducirEstado(nuevoEstado)}.`)
@@ -467,6 +537,8 @@ export default function AdminRedencionesPage() {
           return
         }
 
+        await notificarCambioEstadoGrupo(grupoACancelar, "cancelled", motivo)
+
         setTipoMensaje("success")
         setMensaje("Solicitud cancelada correctamente con motivo guardado.")
         setGuardandoCancelacion(false)
@@ -510,6 +582,10 @@ export default function AdminRedencionesPage() {
         setMensaje("No se pudo cancelar las solicitudes seleccionadas: " + error.message)
         setGuardandoCancelacion(false)
         return
+      }
+
+      for (const grupo of gruposSeleccionados) {
+        await notificarCambioEstadoGrupo(grupo, "cancelled", motivo)
       }
 
       setTipoMensaje("success")
@@ -629,6 +705,10 @@ export default function AdminRedencionesPage() {
       setMensaje("No se pudo ejecutar la acción masiva: " + error.message)
       setEjecutandoMasivo(false)
       return
+    }
+
+    for (const grupo of gruposSeleccionados) {
+      await notificarCambioEstadoGrupo(grupo, bulkAction)
     }
 
     setTipoMensaje("success")

@@ -175,17 +175,40 @@ export default function NuevaFacturaClient() {
     }
   }
 
+  const crearNotificacionCliente = async ({
+    userEmail,
+    title,
+    message,
+    type = "info",
+  }: {
+    userEmail: string
+    title: string
+    message: string
+    type?: string
+  }) => {
+    await supabase.from("notifications").insert([
+      {
+        user_email: userEmail,
+        title,
+        message,
+        type,
+        is_read: false,
+      },
+    ])
+  }
+
   const handleGuardarFactura = async () => {
     setMensaje("")
 
-    const userEmail = localStorage.getItem("cliente_email")
+    const userEmail = (localStorage.getItem("cliente_email") || "").trim().toLowerCase()
+    const numeroNormalizado = invoiceNumber.trim()
 
     if (!userEmail) {
       setMensaje("No se encontró el usuario logueado.")
       return
     }
 
-    if (!invoiceNumber || !invoiceDate || !amountWithoutVat) {
+    if (!numeroNormalizado || !invoiceDate || !amountWithoutVat) {
       setMensaje("Completa número de factura, fecha y valor sin IVA.")
       return
     }
@@ -203,7 +226,8 @@ export default function NuevaFacturaClient() {
     const query = supabase
       .from("invoices")
       .select("id")
-      .eq("invoice_number", invoiceNumber.trim())
+      .eq("user_email", userEmail)
+      .eq("invoice_number", numeroNormalizado)
 
     const { data: existingInvoices, error: existingInvoiceError } = editInvoiceId
       ? await query.neq("id", editInvoiceId)
@@ -215,7 +239,7 @@ export default function NuevaFacturaClient() {
     }
 
     if (existingInvoices && existingInvoices.length > 0) {
-      setMensaje("Ya existe una factura registrada con ese número.")
+      setMensaje("Ya registraste una factura con ese número.")
       return
     }
 
@@ -228,7 +252,7 @@ export default function NuevaFacturaClient() {
         const { error } = await supabase
           .from("invoices")
           .update({
-            invoice_number: invoiceNumber.trim(),
+            invoice_number: numeroNormalizado,
             invoice_date: invoiceDate,
             amount_without_vat: Number(amountWithoutVat),
             notes,
@@ -240,20 +264,33 @@ export default function NuevaFacturaClient() {
           .eq("user_email", userEmail)
 
         if (error) {
-          setMensaje("Ocurrió un error al reemplazar la factura: " + error.message)
+          if (
+            error.message.toLowerCase().includes("duplicate") ||
+            error.message.toLowerCase().includes("unique")
+          ) {
+            setMensaje("Ya registraste una factura con ese número.")
+          } else {
+            setMensaje("Ocurrió un error al reemplazar la factura: " + error.message)
+          }
           setGuardando(false)
           return
         }
 
-        setMensaje("Factura reemplazada correctamente. Quedó nuevamente pendiente de aprobación.")
-        router.push("/dashboard/mis-facturas")
+        await crearNotificacionCliente({
+          userEmail,
+          title: "Factura enviada nuevamente",
+          message: `Tu factura número ${numeroNormalizado} fue enviada otra vez y quedó pendiente de aprobación por administración.`,
+          type: "info",
+        })
+
+        router.push("/dashboard?notice=invoice_pending")
         return
       }
 
       const { error } = await supabase.from("invoices").insert([
         {
           user_email: userEmail,
-          invoice_number: invoiceNumber.trim(),
+          invoice_number: numeroNormalizado,
           invoice_date: invoiceDate,
           amount_without_vat: Number(amountWithoutVat),
           notes,
@@ -267,7 +304,7 @@ export default function NuevaFacturaClient() {
           error.message.toLowerCase().includes("duplicate") ||
           error.message.toLowerCase().includes("unique")
         ) {
-          setMensaje("Ya existe una factura registrada con ese número.")
+          setMensaje("Ya registraste una factura con ese número.")
         } else {
           setMensaje("Ocurrió un error al guardar la factura: " + error.message)
         }
@@ -275,19 +312,14 @@ export default function NuevaFacturaClient() {
         return
       }
 
-      setMensaje("Factura registrada correctamente. Quedó pendiente de aprobación.")
-      setInvoiceNumber("")
-      setInvoiceDate("")
-      setAmountWithoutVat("")
-      setNotes("")
-      setFile(null)
-      setExistingFileUrl("")
-      setExistingFileName("")
+      await crearNotificacionCliente({
+        userEmail,
+        title: "Factura registrada",
+        message: `Tu factura número ${numeroNormalizado} quedó pendiente de aprobación por administración.`,
+        type: "info",
+      })
 
-      const fileInput = document.getElementById("invoice-file-input") as HTMLInputElement | null
-      if (fileInput) {
-        fileInput.value = ""
-      }
+      router.push("/dashboard?notice=invoice_pending")
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Ocurrió un error al subir el archivo."
