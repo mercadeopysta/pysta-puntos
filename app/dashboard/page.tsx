@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { supabase } from "../../lib/supabase"
 import LogoutButton from "../../components/LogoutButton"
 import InfoPopup from "../../components/InfoPopup"
@@ -15,7 +15,6 @@ type FacturaSaldo = {
 type Redencion = {
   points_used: number
   created_at: string
-  status?: string | null
 }
 
 type SettingsRow = {
@@ -24,35 +23,18 @@ type SettingsRow = {
   points_expiration_months: number
 }
 
-type InvoiceStatusRow = {
+type Notificacion = {
   id: string
-  status: string | null
-}
-
-type RedemptionStatusRow = {
-  id: string
-  status: string | null
-}
-
-type PuntosVencimientoInfo = {
-  puntosVigentes: number
-  puntosPorVencer: number
-  proximaFechaVencimiento: string
-}
-
-type NotificationRow = {
-  id: string
-  user_email: string
   title: string
   message: string
-  type: string
   is_read: boolean
   created_at: string
+  type?: string | null
 }
 
 export default function DashboardPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const notificationRef = useRef<HTMLDivElement | null>(null)
 
   const [autorizado, setAutorizado] = useState(false)
   const [nombre, setNombre] = useState("")
@@ -61,121 +43,10 @@ export default function DashboardPage() {
   const [puntosRedimidos, setPuntosRedimidos] = useState(0)
   const [cargando, setCargando] = useState(true)
 
-  const [facturasPendientes, setFacturasPendientes] = useState(0)
-  const [facturasRechazadas, setFacturasRechazadas] = useState(0)
-  const [redencionesPendientes, setRedencionesPendientes] = useState(0)
-  const [redencionesCanceladas, setRedencionesCanceladas] = useState(0)
-
-  const [puntosPorVencer, setPuntosPorVencer] = useState(0)
-  const [proximaFechaVencimiento, setProximaFechaVencimiento] = useState("")
-
-  const [notificaciones, setNotificaciones] = useState<NotificationRow[]>([])
-  const [noLeidas, setNoLeidas] = useState(0)
-  const [mostrarNotificaciones, setMostrarNotificaciones] = useState(false)
-  const [mensajeDashboard, setMensajeDashboard] = useState("")
-
-  const calcularResumenPuntos = (
-    facturasAprobadas: FacturaSaldo[],
-    porcentaje: number,
-    vencimientoActivo: boolean,
-    mesesVigencia: number
-  ): PuntosVencimientoInfo => {
-    const hoy = new Date()
-    const en30Dias = new Date()
-    en30Dias.setDate(en30Dias.getDate() + 30)
-
-    let puntosVigentes = 0
-    let puntosPorVencer = 0
-    let proximaFecha: Date | null = null
-
-    for (const factura of facturasAprobadas) {
-      const valor = Number(factura.amount_without_vat || 0)
-      const valorInterno = valor * (porcentaje / 100)
-      const puntosFactura = Math.floor(valorInterno / 100)
-
-      if (puntosFactura <= 0) continue
-
-      if (!vencimientoActivo) {
-        puntosVigentes += puntosFactura
-        continue
-      }
-
-      const fechaFactura = new Date(factura.invoice_date)
-      const fechaVencimiento = new Date(fechaFactura)
-      fechaVencimiento.setMonth(fechaVencimiento.getMonth() + mesesVigencia)
-
-      if (fechaVencimiento >= hoy) {
-        puntosVigentes += puntosFactura
-
-        if (fechaVencimiento <= en30Dias) {
-          puntosPorVencer += puntosFactura
-
-          if (!proximaFecha || fechaVencimiento < proximaFecha) {
-            proximaFecha = fechaVencimiento
-          }
-        }
-      }
-    }
-
-    return {
-      puntosVigentes,
-      puntosPorVencer,
-      proximaFechaVencimiento: proximaFecha
-        ? proximaFecha.toLocaleDateString("es-CO")
-        : "",
-    }
-  }
-
-  const cargarNotificaciones = async (email: string) => {
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("id, user_email, title, message, type, is_read, created_at")
-      .eq("user_email", email)
-      .order("created_at", { ascending: false })
-      .limit(20)
-
-    if (error) return
-
-    const rows = (data as NotificationRow[]) || []
-    setNotificaciones(rows)
-    setNoLeidas(rows.filter((n) => !n.is_read).length)
-  }
-
-  const marcarNotificacionesComoLeidas = async () => {
-    const pendientes = notificaciones.filter((n) => !n.is_read)
-    if (pendientes.length === 0) return
-
-    const ids = pendientes.map((n) => n.id)
-
-    const { error } = await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .in("id", ids)
-
-    if (!error) {
-      setNotificaciones((prev) =>
-        prev.map((n) => ({
-          ...n,
-          is_read: true,
-        }))
-      )
-      setNoLeidas(0)
-    }
-  }
-
-  const togglePanelNotificaciones = async () => {
-    const nuevoEstado = !mostrarNotificaciones
-    setMostrarNotificaciones(nuevoEstado)
-
-    if (nuevoEstado) {
-      await marcarNotificacionesComoLeidas()
-    }
-  }
-
-  const formatearFechaNotificacion = (fecha: string) => {
-    const date = new Date(fecha)
-    return date.toLocaleString("es-CO")
-  }
+  const [clienteEmail, setClienteEmail] = useState("")
+  const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
+  const [notificacionesOpen, setNotificacionesOpen] = useState(false)
+  const [cargandoNotificaciones, setCargandoNotificaciones] = useState(false)
 
   useEffect(() => {
     const validarYCargar = async () => {
@@ -197,7 +68,7 @@ export default function DashboardPage() {
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("id, email, full_name, client_type, is_active, is_approved")
+          .select("id, email, full_name, client_type, is_active, is_approved, redemption_percentage")
           .eq("id", user.id)
           .maybeSingle()
 
@@ -227,19 +98,21 @@ export default function DashboardPage() {
         localStorage.setItem("cliente_name", nombreCliente)
         localStorage.setItem("cliente_tipo", tipo)
 
+        setClienteEmail(email)
         setNombre(nombreCliente)
         setTipoCliente(tipo)
 
         const { data: settingsData } = await supabase
           .from("settings")
-          .select(
-            "redemption_percentage, points_expiration_enabled, points_expiration_months"
-          )
+          .select("redemption_percentage, points_expiration_enabled, points_expiration_months")
           .limit(1)
           .single()
 
         const settings = settingsData as SettingsRow | null
-        const porcentaje = Number(settings?.redemption_percentage || 6)
+        const porcentajeGeneral = Number(settings?.redemption_percentage || 6)
+        const porcentajeCliente = Number(profile.redemption_percentage || 0)
+        const porcentajeFinal = porcentajeCliente > 0 ? porcentajeCliente : porcentajeGeneral
+
         const vencimientoActivo = Boolean(settings?.points_expiration_enabled)
         const mesesVigencia = Number(settings?.points_expiration_months || 1)
 
@@ -249,17 +122,32 @@ export default function DashboardPage() {
           .eq("user_email", email)
           .eq("status", "approved")
 
-        const facturasAprobadas = (facturasData as FacturaSaldo[]) || []
-        const resumenPuntos = calcularResumenPuntos(
-          facturasAprobadas,
-          porcentaje,
-          vencimientoActivo,
-          mesesVigencia
-        )
+        let acumulados = 0
+
+        if (facturasData) {
+          const hoy = new Date()
+
+          const facturasVigentes = (facturasData as FacturaSaldo[]).filter((factura) => {
+            if (!vencimientoActivo) return true
+
+            const fechaFactura = new Date(factura.invoice_date)
+            const fechaVencimiento = new Date(fechaFactura)
+            fechaVencimiento.setMonth(fechaVencimiento.getMonth() + mesesVigencia)
+
+            return fechaVencimiento >= hoy
+          })
+
+          const totalCompras = facturasVigentes.reduce((acum, factura) => {
+            return acum + Number(factura.amount_without_vat || 0)
+          }, 0)
+
+          const valorInterno = totalCompras * (porcentajeFinal / 100)
+          acumulados = Math.floor(valorInterno / 100)
+        }
 
         const { data: redencionesData } = await supabase
           .from("redemptions")
-          .select("points_used, created_at, status")
+          .select("points_used, created_at")
           .eq("user_email", email)
           .neq("status", "cancelled")
 
@@ -271,40 +159,8 @@ export default function DashboardPage() {
           }, 0)
         }
 
-        const { data: facturasEstadoData } = await supabase
-          .from("invoices")
-          .select("id, status")
-          .eq("user_email", email)
-
-        const { data: redencionesEstadoData } = await supabase
-          .from("redemptions")
-          .select("id, status")
-          .eq("user_email", email)
-
-        const facturasEstado = (facturasEstadoData as InvoiceStatusRow[]) || []
-        const redencionesEstado = (redencionesEstadoData as RedemptionStatusRow[]) || []
-
-        setFacturasPendientes(
-          facturasEstado.filter((factura) => (factura.status || "") === "pending").length
-        )
-        setFacturasRechazadas(
-          facturasEstado.filter((factura) => (factura.status || "") === "rejected").length
-        )
-        setRedencionesPendientes(
-          redencionesEstado.filter((redencion) => (redencion.status || "") === "requested").length
-        )
-        setRedencionesCanceladas(
-          redencionesEstado.filter((redencion) => (redencion.status || "") === "cancelled").length
-        )
-
-        setPuntosPorVencer(resumenPuntos.puntosPorVencer)
-        setProximaFechaVencimiento(resumenPuntos.proximaFechaVencimiento)
-
         setPuntosRedimidos(totalRedimido)
-        setPuntosDisponibles(Math.max(resumenPuntos.puntosVigentes - totalRedimido, 0))
-
-        await cargarNotificaciones(email)
-
+        setPuntosDisponibles(Math.max(acumulados - totalRedimido, 0))
         setAutorizado(true)
       } catch {
         await supabase.auth.signOut()
@@ -320,21 +176,83 @@ export default function DashboardPage() {
     validarYCargar()
   }, [router])
 
-  useEffect(() => {
-    const notice = searchParams.get("notice")
+  const cargarNotificaciones = async () => {
+    const email = clienteEmail || localStorage.getItem("cliente_email") || ""
+    if (!email) return
 
-    if (notice === "invoice_pending") {
-      setMensajeDashboard("Tu factura quedó pendiente de aprobación por administración.")
-    } else {
-      setMensajeDashboard("")
+    setCargandoNotificaciones(true)
+
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("id, title, message, is_read, created_at, type")
+      .eq("user_email", email)
+      .order("created_at", { ascending: false })
+      .limit(20)
+
+    if (!error) {
+      setNotificaciones((data as Notificacion[]) || [])
     }
-  }, [searchParams])
+
+    setCargandoNotificaciones(false)
+  }
+
+  useEffect(() => {
+    if (autorizado && clienteEmail) {
+      cargarNotificaciones()
+    }
+  }, [autorizado, clienteEmail])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!notificationRef.current) return
+      if (!notificationRef.current.contains(event.target as Node)) {
+        setNotificacionesOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const toggleNotificaciones = async () => {
+    const nuevoEstado = !notificacionesOpen
+    setNotificacionesOpen(nuevoEstado)
+
+    if (nuevoEstado) {
+      await cargarNotificaciones()
+    }
+  }
+
+  const marcarTodasLeidas = async () => {
+    const email = clienteEmail || localStorage.getItem("cliente_email") || ""
+    if (!email) return
+
+    const idsNoLeidas = notificaciones
+      .filter((n) => !n.is_read)
+      .map((n) => n.id)
+
+    if (idsNoLeidas.length === 0) return
+
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .in("id", idsNoLeidas)
+
+    if (!error) {
+      setNotificaciones((prev) =>
+        prev.map((n) => ({
+          ...n,
+          is_read: true,
+        }))
+      )
+    }
+  }
 
   const refrescarPantalla = () => {
     window.location.reload()
   }
 
-  const notificacionesOrdenadas = useMemo(() => notificaciones, [notificaciones])
+  const totalNoLeidas = notificaciones.filter((n) => !n.is_read).length
 
   if (cargando) {
     return (
@@ -456,47 +374,201 @@ export default function DashboardPage() {
               </div>
 
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-                <button
-                  onClick={togglePanelNotificaciones}
-                  style={{
-                    position: "relative",
-                    background: "#e9e9e9",
-                    color: "#111",
-                    border: "none",
-                    padding: "12px 16px",
-                    borderRadius: "14px",
-                    cursor: "pointer",
-                    fontSize: "18px",
-                    fontWeight: 700,
-                    minWidth: "54px",
-                  }}
-                  title="Notificaciones"
-                >
-                  🔔
-                  {noLeidas > 0 ? (
-                    <span
+                <div style={{ position: "relative" }} ref={notificationRef}>
+                  <button
+                    onClick={toggleNotificaciones}
+                    style={{
+                      position: "relative",
+                      background: "#ffffff",
+                      color: "#111",
+                      border: "1px solid #e5e7eb",
+                      padding: "12px 14px",
+                      borderRadius: "14px",
+                      cursor: "pointer",
+                      fontSize: "20px",
+                      fontWeight: 700,
+                      minWidth: "52px",
+                      boxShadow: "0 6px 16px rgba(0,0,0,0.06)",
+                    }}
+                    aria-label="Notificaciones"
+                    title="Notificaciones"
+                  >
+                    🔔
+
+                    {totalNoLeidas > 0 && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: "-6px",
+                          right: "-6px",
+                          minWidth: "22px",
+                          height: "22px",
+                          borderRadius: "999px",
+                          background: "#dc2626",
+                          color: "#fff",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "0 6px",
+                          border: "2px solid #fff",
+                        }}
+                      >
+                        {totalNoLeidas > 99 ? "99+" : totalNoLeidas}
+                      </span>
+                    )}
+                  </button>
+
+                  {notificacionesOpen && (
+                    <div
                       style={{
                         position: "absolute",
-                        top: "-6px",
-                        right: "-6px",
-                        minWidth: "22px",
-                        height: "22px",
-                        padding: "0 6px",
-                        borderRadius: "999px",
-                        background: "#dc2626",
-                        color: "#fff",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        border: "2px solid #fff",
+                        top: "62px",
+                        right: 0,
+                        width: "360px",
+                        maxWidth: "calc(100vw - 28px)",
+                        background: "#fff",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "18px",
+                        boxShadow: "0 18px 40px rgba(0,0,0,0.14)",
+                        overflow: "hidden",
+                        zIndex: 50,
                       }}
                     >
-                      {noLeidas > 99 ? "99+" : noLeidas}
-                    </span>
-                  ) : null}
-                </button>
+                      <div
+                        style={{
+                          padding: "16px",
+                          borderBottom: "1px solid #e5e7eb",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "12px",
+                        }}
+                      >
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: "18px", color: "#111" }}>Notificaciones</h3>
+                          <p style={{ margin: "4px 0 0 0", color: "#6b7280", fontSize: "13px" }}>
+                            {totalNoLeidas > 0
+                              ? `${totalNoLeidas} sin leer`
+                              : "No tienes notificaciones pendientes"}
+                          </p>
+                        </div>
+
+                        {totalNoLeidas > 0 && (
+                          <button
+                            onClick={marcarTodasLeidas}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: "#111",
+                              cursor: "pointer",
+                              fontWeight: 700,
+                              fontSize: "13px",
+                            }}
+                          >
+                            Marcar leídas
+                          </button>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          maxHeight: "380px",
+                          overflowY: "auto",
+                          padding: "10px",
+                          display: "grid",
+                          gap: "10px",
+                        }}
+                      >
+                        {cargandoNotificaciones ? (
+                          <div style={{ padding: "14px", color: "#6b7280" }}>
+                            Cargando notificaciones...
+                          </div>
+                        ) : notificaciones.length === 0 ? (
+                          <div
+                            style={{
+                              padding: "14px",
+                              color: "#6b7280",
+                              background: "#fafafa",
+                              borderRadius: "14px",
+                              border: "1px solid #eee",
+                            }}
+                          >
+                            No tienes notificaciones todavía.
+                          </div>
+                        ) : (
+                          notificaciones.map((notificacion) => (
+                            <div
+                              key={notificacion.id}
+                              style={{
+                                padding: "14px",
+                                borderRadius: "14px",
+                                border: notificacion.is_read ? "1px solid #ececec" : "1px solid #bfdbfe",
+                                background: notificacion.is_read ? "#fafafa" : "#eff6ff",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "flex-start",
+                                  gap: "10px",
+                                  marginBottom: "6px",
+                                }}
+                              >
+                                <p
+                                  style={{
+                                    margin: 0,
+                                    fontWeight: 700,
+                                    color: "#111",
+                                    lineHeight: 1.4,
+                                  }}
+                                >
+                                  {notificacion.title}
+                                </p>
+
+                                {!notificacion.is_read && (
+                                  <span
+                                    style={{
+                                      width: "9px",
+                                      height: "9px",
+                                      borderRadius: "999px",
+                                      background: "#2563eb",
+                                      flexShrink: 0,
+                                      marginTop: "6px",
+                                    }}
+                                  />
+                                )}
+                              </div>
+
+                              <p
+                                style={{
+                                  margin: "0 0 8px 0",
+                                  color: "#4b5563",
+                                  fontSize: "14px",
+                                  lineHeight: 1.5,
+                                }}
+                              >
+                                {notificacion.message}
+                              </p>
+
+                              <p
+                                style={{
+                                  margin: 0,
+                                  color: "#6b7280",
+                                  fontSize: "12px",
+                                }}
+                              >
+                                {new Date(notificacion.created_at).toLocaleString("es-CO")}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <button
                   onClick={refrescarPantalla}
@@ -519,91 +591,6 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          {mensajeDashboard ? (
-            <section
-              style={{
-                background: "#eff6ff",
-                border: "1px solid #bfdbfe",
-                color: "#1d4ed8",
-                borderRadius: "18px",
-                padding: "16px 18px",
-                marginBottom: "22px",
-                boxShadow: "0 10px 24px rgba(0,0,0,0.05)",
-              }}
-            >
-              {mensajeDashboard}
-            </section>
-          ) : null}
-
-          {mostrarNotificaciones ? (
-            <section
-              style={{
-                background: "#fff",
-                borderRadius: "24px",
-                padding: "22px",
-                boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
-                border: "1px solid rgba(0,0,0,0.04)",
-                marginBottom: "22px",
-              }}
-            >
-              <div style={{ marginBottom: "16px" }}>
-                <h2 style={{ margin: 0, fontSize: "24px", color: "#111" }}>Notificaciones</h2>
-                <p style={{ margin: "8px 0 0 0", color: "#6b7280", lineHeight: 1.5 }}>
-                  Aquí verás los cambios importantes de tus facturas y redenciones.
-                </p>
-              </div>
-
-              {notificacionesOrdenadas.length === 0 ? (
-                <div
-                  style={{
-                    background: "#f9fafb",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "16px",
-                    padding: "16px",
-                    color: "#6b7280",
-                  }}
-                >
-                  No tienes notificaciones todavía.
-                </div>
-              ) : (
-                <div style={{ display: "grid", gap: "12px" }}>
-                  {notificacionesOrdenadas.map((notificacion) => (
-                    <div
-                      key={notificacion.id}
-                      style={{
-                        background: notificacion.is_read ? "#f9fafb" : "#eff6ff",
-                        border: notificacion.is_read ? "1px solid #e5e7eb" : "1px solid #bfdbfe",
-                        borderRadius: "16px",
-                        padding: "14px 16px",
-                        display: "grid",
-                        gap: "6px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: "12px",
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                        }}
-                      >
-                        <strong style={{ color: "#111", fontSize: "15px" }}>{notificacion.title}</strong>
-                        <span style={{ color: "#6b7280", fontSize: "12px" }}>
-                          {formatearFechaNotificacion(notificacion.created_at)}
-                        </span>
-                      </div>
-
-                      <p style={{ margin: 0, color: "#374151", lineHeight: 1.5 }}>
-                        {notificacion.message}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          ) : null}
-
           <section
             style={{
               display: "grid",
@@ -622,46 +609,6 @@ export default function DashboardPage() {
               valor={String(puntosRedimidos)}
               descripcion="Total de puntos ya usados"
             />
-            <ResumenCard
-              titulo="Puntos por vencer pronto"
-              valor={String(puntosPorVencer)}
-              descripcion="Vencen en los próximos 30 días"
-            />
-            <ResumenCard
-              titulo="Próximo vencimiento"
-              valor={proximaFechaVencimiento || "Sin vencimiento cercano"}
-              descripcion="Fecha estimada más próxima"
-            />
-          </section>
-
-          <section
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: "16px",
-              marginBottom: "24px",
-            }}
-          >
-            <ResumenCard
-              titulo="Facturas pendientes"
-              valor={String(facturasPendientes)}
-              descripcion="Pendientes por revisión"
-            />
-            <ResumenCard
-              titulo="Facturas rechazadas"
-              valor={String(facturasRechazadas)}
-              descripcion="Con observaciones"
-            />
-            <ResumenCard
-              titulo="Redenciones pendientes"
-              valor={String(redencionesPendientes)}
-              descripcion="Solicitudes en proceso"
-            />
-            <ResumenCard
-              titulo="Redenciones canceladas"
-              valor={String(redencionesCanceladas)}
-              descripcion="Con nota administrativa"
-            />
           </section>
 
           <section
@@ -672,8 +619,6 @@ export default function DashboardPage() {
               boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
               border: "1px solid rgba(0,0,0,0.04)",
               marginBottom: "24px",
-              display: "grid",
-              gap: "14px",
             }}
           >
             <div
@@ -703,77 +648,6 @@ export default function DashboardPage() {
                 Los premios o ítems redimidos serán enviados junto con el siguiente pedido que realices.
               </p>
             </div>
-
-            {puntosPorVencer > 0 ? (
-              <div
-                style={{
-                  background: "#fff7ed",
-                  border: "1px solid #fed7aa",
-                  borderRadius: "18px",
-                  padding: "16px 18px",
-                  display: "grid",
-                  gap: "8px",
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    width: "fit-content",
-                    padding: "6px 10px",
-                    borderRadius: "999px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    background: "#ea580c",
-                    color: "#fff",
-                  }}
-                >
-                  Atención
-                </span>
-
-                <h3 style={{ margin: 0, fontSize: "20px", color: "#9a3412", lineHeight: 1.2 }}>
-                  Tienes puntos próximos a vencer
-                </h3>
-
-                <p style={{ margin: 0, color: "#7c2d12", lineHeight: 1.6 }}>
-                  Tienes <strong>{puntosPorVencer}</strong> punto(s) que vencerán pronto
-                  {proximaFechaVencimiento ? `, con una fecha estimada de vencimiento el ${proximaFechaVencimiento}` : ""}.
-                </p>
-              </div>
-            ) : (
-              <div
-                style={{
-                  background: "#ecfdf3",
-                  border: "1px solid #bbf7d0",
-                  borderRadius: "18px",
-                  padding: "16px 18px",
-                  display: "grid",
-                  gap: "8px",
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    width: "fit-content",
-                    padding: "6px 10px",
-                    borderRadius: "999px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    background: "#166534",
-                    color: "#fff",
-                  }}
-                >
-                  Todo bien
-                </span>
-
-                <h3 style={{ margin: 0, fontSize: "20px", color: "#166534", lineHeight: 1.2 }}>
-                  No tienes vencimientos cercanos
-                </h3>
-
-                <p style={{ margin: 0, color: "#166534", lineHeight: 1.6 }}>
-                  Tus puntos no tienen vencimientos próximos dentro de los siguientes 30 días.
-                </p>
-              </div>
-            )}
           </section>
 
           <section
@@ -854,7 +728,7 @@ function ResumenCard({
       <h3
         style={{
           margin: "10px 0 8px 0",
-          fontSize: "clamp(24px, 5vw, 34px)",
+          fontSize: "clamp(28px, 6vw, 34px)",
           color: "#111",
           lineHeight: 1.1,
           wordBreak: "break-word",
