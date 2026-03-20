@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../lib/supabase"
@@ -28,13 +28,14 @@ type Notificacion = {
   user_email: string
   title: string
   message: string
-  type: string
+  type: string | null
   is_read: boolean
   created_at: string
 }
 
 export default function DashboardPage() {
   const router = useRouter()
+  const notificationRef = useRef<HTMLDivElement | null>(null)
 
   const [autorizado, setAutorizado] = useState(false)
   const [nombre, setNombre] = useState("")
@@ -43,9 +44,146 @@ export default function DashboardPage() {
   const [puntosRedimidos, setPuntosRedimidos] = useState(0)
   const [cargando, setCargando] = useState(true)
 
+  const [clienteEmail, setClienteEmail] = useState("")
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
   const [notificacionesOpen, setNotificacionesOpen] = useState(false)
   const [cargandoNotificaciones, setCargandoNotificaciones] = useState(false)
+
+  const normalizarTexto = (texto: string | null | undefined) => {
+    return (texto || "").trim().toLowerCase()
+  }
+
+  const obtenerTituloNotificacion = (notificacion: Notificacion) => {
+    const type = normalizarTexto(notificacion.type)
+    const title = (notificacion.title || "").trim()
+    const titleLower = normalizarTexto(notificacion.title)
+    const messageLower = normalizarTexto(notificacion.message)
+
+    if (type === "invoice_approved") return "Factura aprobada"
+    if (type === "invoice_rejected") return "Factura rechazada"
+    if (type === "redemption_approved") return "Redención aprobada"
+    if (type === "redemption_shipped") return "Redención enviada"
+    if (type === "redemption_delivered") return "Redención entregada"
+    if (type === "redemption_cancelled") return "Redención cancelada"
+
+    if (type === "success") {
+      if (
+        titleLower.includes("entreg") ||
+        messageLower.includes("entreg")
+      ) {
+        return "Redención entregada"
+      }
+      if (
+        titleLower.includes("enviad") ||
+        messageLower.includes("enviad")
+      ) {
+        return "Redención enviada"
+      }
+      if (
+        titleLower.includes("aprob") ||
+        titleLower.includes("acept") ||
+        messageLower.includes("aprob") ||
+        messageLower.includes("acept")
+      ) {
+        return "Redención aprobada"
+      }
+      return "Actualización de redención"
+    }
+
+    if (type === "warning") return title || "Notificación importante"
+    if (type === "error") return title || "Notificación importante"
+
+    if (
+      titleLower === "invoice_approved" ||
+      titleLower === "approved invoice"
+    ) {
+      return "Factura aprobada"
+    }
+
+    if (
+      titleLower === "invoice_rejected" ||
+      titleLower === "rejected invoice"
+    ) {
+      return "Factura rechazada"
+    }
+
+    if (titleLower === "success") {
+      if (
+        messageLower.includes("entreg")
+      ) {
+        return "Redención entregada"
+      }
+      if (
+        messageLower.includes("enviad")
+      ) {
+        return "Redención enviada"
+      }
+      if (
+        messageLower.includes("aprob") ||
+        messageLower.includes("acept")
+      ) {
+        return "Redención aprobada"
+      }
+      return "Actualización"
+    }
+
+    return title || "Notificación"
+  }
+
+  const obtenerMensajeNotificacion = (notificacion: Notificacion) => {
+    const type = normalizarTexto(notificacion.type)
+    const titleLower = normalizarTexto(notificacion.title)
+    const message = (notificacion.message || "").trim()
+    const messageLower = normalizarTexto(notificacion.message)
+
+    if (type === "invoice_approved") {
+      return message || "Tu factura fue aprobada correctamente."
+    }
+
+    if (type === "invoice_rejected") {
+      return message || "Tu factura fue rechazada."
+    }
+
+    if (type === "redemption_approved") {
+      return message || "Tu solicitud de redención fue aprobada correctamente."
+    }
+
+    if (type === "redemption_shipped") {
+      return message || "Tu redención fue enviada."
+    }
+
+    if (type === "redemption_delivered") {
+      return message || "Tu redención fue entregada correctamente."
+    }
+
+    if (type === "redemption_cancelled") {
+      return message || "Tu solicitud de redención fue cancelada."
+    }
+
+    if (type === "success") {
+      if (message) return message
+
+      if (titleLower.includes("entreg")) {
+        return "Tu redención fue entregada correctamente."
+      }
+
+      if (titleLower.includes("enviad")) {
+        return "Tu redención fue enviada."
+      }
+
+      if (titleLower.includes("aprob") || titleLower.includes("acept")) {
+        return "Tu solicitud de redención fue aprobada correctamente."
+      }
+
+      return "Tu solicitud fue actualizada correctamente."
+    }
+
+    if (messageLower === "success") {
+      return "Tu solicitud fue actualizada correctamente."
+    }
+
+    return message || "Tienes una nueva notificación."
+  }
 
   useEffect(() => {
     const validarYCargar = async () => {
@@ -97,12 +235,15 @@ export default function DashboardPage() {
         localStorage.setItem("cliente_name", nombreCliente)
         localStorage.setItem("cliente_tipo", tipo)
 
+        setClienteEmail(email)
         setNombre(nombreCliente)
         setTipoCliente(tipo)
 
         const { data: settingsData } = await supabase
           .from("settings")
-          .select("redemption_percentage, points_expiration_enabled, points_expiration_months")
+          .select(
+            "redemption_percentage, points_expiration_enabled, points_expiration_months"
+          )
           .limit(1)
           .single()
 
@@ -159,8 +300,6 @@ export default function DashboardPage() {
 
         setPuntosRedimidos(totalRedimido)
         setPuntosDisponibles(Math.max(acumulados - totalRedimido, 0))
-
-        await cargarNotificaciones(email)
         setAutorizado(true)
       } catch {
         await supabase.auth.signOut()
@@ -176,9 +315,8 @@ export default function DashboardPage() {
     validarYCargar()
   }, [router])
 
-  const cargarNotificaciones = async (emailParam?: string) => {
-    const email = emailParam || localStorage.getItem("cliente_email") || ""
-
+  const cargarNotificaciones = async () => {
+    const email = clienteEmail || localStorage.getItem("cliente_email") || ""
     if (!email) return
 
     setCargandoNotificaciones(true)
@@ -190,45 +328,50 @@ export default function DashboardPage() {
       .order("created_at", { ascending: false })
       .limit(20)
 
-    if (error) {
-      console.error("Error cargando notificaciones:", error)
-      setNotificaciones([])
-      setCargandoNotificaciones(false)
-      return
+    if (!error) {
+      setNotificaciones((data as Notificacion[]) || [])
     }
 
-    setNotificaciones((data as Notificacion[]) || [])
     setCargandoNotificaciones(false)
   }
 
-  const marcarNotificacionesComoLeidas = async () => {
-    const noLeidas = notificaciones.filter((item) => !item.is_read)
+  useEffect(() => {
+    if (!autorizado || !clienteEmail) return
 
-    if (noLeidas.length === 0) return
+    cargarNotificaciones()
 
-    const ids = noLeidas.map((item) => item.id)
+    const channel = supabase
+      .channel(`notifications-${clienteEmail}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_email=eq.${clienteEmail}`,
+        },
+        () => {
+          cargarNotificaciones()
+        }
+      )
+      .subscribe()
 
-    const { error } = await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .in("id", ids)
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [autorizado, clienteEmail])
 
-    if (error) {
-      console.error("Error marcando notificaciones como leídas:", error)
-      return
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!notificationRef.current) return
+      if (!notificationRef.current.contains(event.target as Node)) {
+        setNotificacionesOpen(false)
+      }
     }
 
-    setNotificaciones((prev) =>
-      prev.map((item) =>
-        ids.includes(item.id)
-          ? {
-              ...item,
-              is_read: true,
-            }
-          : item
-      )
-    )
-  }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   const toggleNotificaciones = async () => {
     const nuevoEstado = !notificacionesOpen
@@ -236,61 +379,34 @@ export default function DashboardPage() {
 
     if (nuevoEstado) {
       await cargarNotificaciones()
-      await marcarNotificacionesComoLeidas()
     }
   }
 
-  const refrescarPantalla = async () => {
-    await cargarNotificaciones()
+  const marcarTodasLeidas = async () => {
+    const idsNoLeidas = notificaciones.filter((n) => !n.is_read).map((n) => n.id)
+
+    if (idsNoLeidas.length === 0) return
+
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .in("id", idsNoLeidas)
+
+    if (!error) {
+      setNotificaciones((prev) =>
+        prev.map((n) => ({
+          ...n,
+          is_read: true,
+        }))
+      )
+    }
+  }
+
+  const refrescarPantalla = () => {
     window.location.reload()
   }
 
-  const totalNoLeidas = useMemo(() => {
-    return notificaciones.filter((item) => !item.is_read).length
-  }, [notificaciones])
-
-  const formatearFechaNotificacion = (fecha: string) => {
-    try {
-      return new Date(fecha).toLocaleString("es-CO", {
-        dateStyle: "short",
-        timeStyle: "short",
-      })
-    } catch {
-      return fecha
-    }
-  }
-
-  const estiloTipoNotificacion = (tipo: string) => {
-    if (tipo === "success") {
-      return {
-        background: "#ecfdf3",
-        color: "#166534",
-        border: "1px solid #bbf7d0",
-      }
-    }
-
-    if (tipo === "warning") {
-      return {
-        background: "#fff7ed",
-        color: "#9a3412",
-        border: "1px solid #fed7aa",
-      }
-    }
-
-    if (tipo === "error") {
-      return {
-        background: "#fef2f2",
-        color: "#991b1b",
-        border: "1px solid #fecaca",
-      }
-    }
-
-    return {
-      background: "#eff6ff",
-      color: "#1d4ed8",
-      border: "1px solid #bfdbfe",
-    }
-  }
+  const totalNoLeidas = notificaciones.filter((n) => !n.is_read).length
 
   if (cargando) {
     return (
@@ -330,7 +446,7 @@ export default function DashboardPage() {
           fontFamily: "Arial, sans-serif",
         }}
       >
-        <div style={{ maxWidth: "1180px", margin: "0 auto", position: "relative" }}>
+        <div style={{ maxWidth: "1180px", margin: "0 auto" }}>
           <section
             style={{
               background: "#ffffff",
@@ -339,7 +455,6 @@ export default function DashboardPage() {
               boxShadow: "0 14px 40px rgba(0,0,0,0.08)",
               marginBottom: "22px",
               border: "1px solid rgba(0,0,0,0.04)",
-              position: "relative",
             }}
           >
             <div
@@ -413,49 +528,200 @@ export default function DashboardPage() {
               </div>
 
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-                <button
-                  onClick={toggleNotificaciones}
-                  style={{
-                    position: "relative",
-                    background: "#111",
-                    color: "#fff",
-                    border: "none",
-                    padding: "12px 16px",
-                    borderRadius: "14px",
-                    cursor: "pointer",
-                    fontSize: "18px",
-                    fontWeight: 700,
-                    minWidth: "52px",
-                    minHeight: "48px",
-                  }}
-                  aria-label="Notificaciones"
-                  title="Notificaciones"
-                >
-                  🔔
-                  {totalNoLeidas > 0 && (
-                    <span
+                <div style={{ position: "relative" }} ref={notificationRef}>
+                  <button
+                    onClick={toggleNotificaciones}
+                    style={{
+                      position: "relative",
+                      background: "#ffffff",
+                      color: "#111",
+                      border: "1px solid #e5e7eb",
+                      padding: "12px 14px",
+                      borderRadius: "14px",
+                      cursor: "pointer",
+                      fontSize: "20px",
+                      fontWeight: 700,
+                      minWidth: "52px",
+                      boxShadow: "0 6px 16px rgba(0,0,0,0.06)",
+                    }}
+                    aria-label="Notificaciones"
+                    title="Notificaciones"
+                  >
+                    🔔
+                    {totalNoLeidas > 0 && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: "-6px",
+                          right: "-6px",
+                          minWidth: "22px",
+                          height: "22px",
+                          borderRadius: "999px",
+                          background: "#dc2626",
+                          color: "#fff",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "0 6px",
+                          border: "2px solid #fff",
+                        }}
+                      >
+                        {totalNoLeidas > 99 ? "99+" : totalNoLeidas}
+                      </span>
+                    )}
+                  </button>
+
+                  {notificacionesOpen && (
+                    <div
                       style={{
                         position: "absolute",
-                        top: "-6px",
-                        right: "-6px",
-                        minWidth: "22px",
-                        height: "22px",
-                        padding: "0 6px",
-                        borderRadius: "999px",
-                        background: "#dc2626",
-                        color: "#fff",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        boxShadow: "0 4px 10px rgba(0,0,0,0.18)",
+                        top: "62px",
+                        right: 0,
+                        width: "360px",
+                        maxWidth: "calc(100vw - 28px)",
+                        background: "#fff",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "18px",
+                        boxShadow: "0 18px 40px rgba(0,0,0,0.14)",
+                        overflow: "hidden",
+                        zIndex: 50,
                       }}
                     >
-                      {totalNoLeidas > 99 ? "99+" : totalNoLeidas}
-                    </span>
+                      <div
+                        style={{
+                          padding: "16px",
+                          borderBottom: "1px solid #e5e7eb",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "12px",
+                        }}
+                      >
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: "18px", color: "#111" }}>Notificaciones</h3>
+                          <p style={{ margin: "4px 0 0 0", color: "#6b7280", fontSize: "13px" }}>
+                            {totalNoLeidas > 0
+                              ? `${totalNoLeidas} sin leer`
+                              : "No tienes notificaciones pendientes"}
+                          </p>
+                        </div>
+
+                        {totalNoLeidas > 0 && (
+                          <button
+                            onClick={marcarTodasLeidas}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: "#111",
+                              cursor: "pointer",
+                              fontWeight: 700,
+                              fontSize: "13px",
+                            }}
+                          >
+                            Marcar leídas
+                          </button>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          maxHeight: "380px",
+                          overflowY: "auto",
+                          padding: "10px",
+                          display: "grid",
+                          gap: "10px",
+                        }}
+                      >
+                        {cargandoNotificaciones ? (
+                          <div style={{ padding: "14px", color: "#6b7280" }}>
+                            Cargando notificaciones...
+                          </div>
+                        ) : notificaciones.length === 0 ? (
+                          <div
+                            style={{
+                              padding: "14px",
+                              color: "#6b7280",
+                              background: "#fafafa",
+                              borderRadius: "14px",
+                              border: "1px solid #eee",
+                            }}
+                          >
+                            No tienes notificaciones todavía.
+                          </div>
+                        ) : (
+                          notificaciones.map((notificacion) => (
+                            <div
+                              key={notificacion.id}
+                              style={{
+                                padding: "14px",
+                                borderRadius: "14px",
+                                border: notificacion.is_read ? "1px solid #ececec" : "1px solid #bfdbfe",
+                                background: notificacion.is_read ? "#fafafa" : "#eff6ff",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "flex-start",
+                                  gap: "10px",
+                                  marginBottom: "6px",
+                                }}
+                              >
+                                <p
+                                  style={{
+                                    margin: 0,
+                                    fontWeight: 700,
+                                    color: "#111",
+                                    lineHeight: 1.4,
+                                  }}
+                                >
+                                  {obtenerTituloNotificacion(notificacion)}
+                                </p>
+
+                                {!notificacion.is_read && (
+                                  <span
+                                    style={{
+                                      width: "9px",
+                                      height: "9px",
+                                      borderRadius: "999px",
+                                      background: "#2563eb",
+                                      flexShrink: 0,
+                                      marginTop: "6px",
+                                    }}
+                                  />
+                                )}
+                              </div>
+
+                              <p
+                                style={{
+                                  margin: "0 0 8px 0",
+                                  color: "#4b5563",
+                                  fontSize: "14px",
+                                  lineHeight: 1.5,
+                                }}
+                              >
+                                {obtenerMensajeNotificacion(notificacion)}
+                              </p>
+
+                              <p
+                                style={{
+                                  margin: 0,
+                                  color: "#6b7280",
+                                  fontSize: "12px",
+                                }}
+                              >
+                                {new Date(notificacion.created_at).toLocaleString("es-CO")}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
                   )}
-                </button>
+                </div>
 
                 <button
                   onClick={refrescarPantalla}
@@ -476,145 +742,6 @@ export default function DashboardPage() {
                 <LogoutButton />
               </div>
             </div>
-
-            {notificacionesOpen && (
-              <div
-                style={{
-                  marginTop: "18px",
-                  background: "#fff",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "20px",
-                  boxShadow: "0 14px 30px rgba(0,0,0,0.08)",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    padding: "18px 18px 14px 18px",
-                    borderBottom: "1px solid #e5e7eb",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
-                  <div>
-                    <h2 style={{ margin: 0, fontSize: "20px", color: "#111" }}>Notificaciones</h2>
-                    <p style={{ margin: "6px 0 0 0", color: "#6b7280", fontSize: "14px" }}>
-                      Aquí verás cambios sobre facturas y redenciones.
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => setNotificacionesOpen(false)}
-                    style={{
-                      background: "#f3f4f6",
-                      color: "#111",
-                      border: "1px solid #e5e7eb",
-                      padding: "10px 14px",
-                      borderRadius: "12px",
-                      cursor: "pointer",
-                      fontWeight: 700,
-                    }}
-                  >
-                    Cerrar
-                  </button>
-                </div>
-
-                <div style={{ maxHeight: "420px", overflowY: "auto", padding: "14px" }}>
-                  {cargandoNotificaciones ? (
-                    <p style={{ margin: 0, color: "#6b7280" }}>Cargando notificaciones...</p>
-                  ) : notificaciones.length === 0 ? (
-                    <div
-                      style={{
-                        background: "#f9fafb",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "16px",
-                        padding: "16px",
-                        color: "#6b7280",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      No tienes notificaciones por ahora.
-                    </div>
-                  ) : (
-                    <div style={{ display: "grid", gap: "12px" }}>
-                      {notificaciones.map((item) => (
-                        <article
-                          key={item.id}
-                          style={{
-                            background: item.is_read ? "#fff" : "#fffdf5",
-                            border: item.is_read ? "1px solid #e5e7eb" : "1px solid #f3d37a",
-                            borderRadius: "16px",
-                            padding: "14px",
-                            boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: "10px",
-                              flexWrap: "wrap",
-                              alignItems: "flex-start",
-                              marginBottom: "8px",
-                            }}
-                          >
-                            <div style={{ display: "grid", gap: "6px", minWidth: 0 }}>
-                              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                                <strong style={{ color: "#111", fontSize: "15px", lineHeight: 1.4 }}>
-                                  {item.title}
-                                </strong>
-
-                                <span
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    padding: "5px 9px",
-                                    borderRadius: "999px",
-                                    fontSize: "11px",
-                                    fontWeight: 700,
-                                    ...estiloTipoNotificacion(item.type),
-                                  }}
-                                >
-                                  {item.type || "info"}
-                                </span>
-
-                                {!item.is_read && (
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      padding: "5px 9px",
-                                      borderRadius: "999px",
-                                      fontSize: "11px",
-                                      fontWeight: 700,
-                                      background: "#111",
-                                      color: "#fff",
-                                    }}
-                                  >
-                                    Nueva
-                                  </span>
-                                )}
-                              </div>
-
-                              <span style={{ color: "#6b7280", fontSize: "12px" }}>
-                                {formatearFechaNotificacion(item.created_at)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <p style={{ margin: 0, color: "#111", lineHeight: 1.55, fontSize: "14px" }}>
-                            {item.message}
-                          </p>
-                        </article>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </section>
 
           <section
