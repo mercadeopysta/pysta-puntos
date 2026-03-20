@@ -1,14 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { supabase } from "../../../lib/supabase"
 
 type AdminUser = {
   id: string
   email: string
-  password: string
-  created_at: string
+  created_at?: string
 }
 
 const ADMIN_SESSION_HOURS = 12
@@ -29,52 +29,121 @@ export default function AdminLoginPage() {
     localStorage.removeItem("admin_session_expires_at")
   }
 
+  useEffect(() => {
+    const verificarSesionExistente = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        if (!session?.user?.email) return
+
+        const emailSesion = session.user.email.trim().toLowerCase()
+
+        const { data, error } = await supabase
+          .from("admin_users")
+          .select("id, email, created_at")
+          .eq("email", emailSesion)
+          .maybeSingle()
+
+        if (error || !data) return
+
+        const ahora = new Date()
+        const expiracion = new Date(
+          ahora.getTime() + ADMIN_SESSION_HOURS * 60 * 60 * 1000
+        )
+
+        localStorage.setItem("admin_logged_in", "true")
+        localStorage.setItem("admin_email", data.email || emailSesion)
+        localStorage.setItem("admin_nombre", data.email || "Administrador")
+        localStorage.setItem("admin_login_at", ahora.toISOString())
+        localStorage.setItem("admin_session_expires_at", expiracion.toISOString())
+
+        router.replace("/admin")
+      } catch (error) {
+        console.error("Error verificando sesión admin existente:", error)
+      }
+    }
+
+    verificarSesionExistente()
+  }, [router])
+
   const handleLogin = async () => {
     setMensaje("")
 
-    const emailNormalizado = email.trim().toLowerCase()
-    const passwordNormalizada = password
-
-    if (!emailNormalizado || !passwordNormalizada) {
-      setMensaje("Completa correo y contraseña.")
+    if (!email.trim() || !password.trim()) {
+      setMensaje("Ingresa tu correo y contraseña.")
       return
     }
 
-    setCargando(true)
-    limpiarSesionAdmin()
+    try {
+      setCargando(true)
 
-    const { data, error } = await supabase
-      .from("admin_users")
-      .select("id, email, password, created_at")
-      .eq("email", emailNormalizado)
-      .eq("password", passwordNormalizada)
-      .maybeSingle()
+      const correo = email.trim().toLowerCase()
 
-    if (error) {
-      setMensaje("Ocurrió un error al iniciar sesión como admin.")
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: correo,
+        password,
+      })
+
+      if (authError) {
+        setMensaje("Correo o contraseña incorrectos.")
+        setCargando(false)
+        return
+      }
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError || !user?.email) {
+        await supabase.auth.signOut()
+        setMensaje("No se pudo iniciar sesión correctamente.")
+        setCargando(false)
+        return
+      }
+
+      const emailSesion = user.email.trim().toLowerCase()
+
+      const { data: admin, error: adminError } = await supabase
+        .from("admin_users")
+        .select("id, email, created_at")
+        .eq("email", emailSesion)
+        .maybeSingle()
+
+      if (adminError) {
+        await supabase.auth.signOut()
+        setMensaje("Ocurrió un error validando el acceso administrativo.")
+        setCargando(false)
+        return
+      }
+
+      if (!admin) {
+        await supabase.auth.signOut()
+        limpiarSesionAdmin()
+        setMensaje("Tu usuario no tiene permisos de administrador.")
+        setCargando(false)
+        return
+      }
+
+      const ahora = new Date()
+      const expiracion = new Date(
+        ahora.getTime() + ADMIN_SESSION_HOURS * 60 * 60 * 1000
+      )
+
+      localStorage.setItem("admin_logged_in", "true")
+      localStorage.setItem("admin_email", admin.email || emailSesion)
+      localStorage.setItem("admin_nombre", admin.email || "Administrador")
+      localStorage.setItem("admin_login_at", ahora.toISOString())
+      localStorage.setItem("admin_session_expires_at", expiracion.toISOString())
+
+      router.push("/admin")
+    } catch {
+      setMensaje("Ocurrió un error inesperado al iniciar sesión.")
+    } finally {
       setCargando(false)
-      return
     }
-
-    const admin = data as AdminUser | null
-
-    if (!admin) {
-      setMensaje("Credenciales de administrador incorrectas.")
-      setCargando(false)
-      return
-    }
-
-    const ahora = new Date()
-    const expiracion = new Date(ahora.getTime() + ADMIN_SESSION_HOURS * 60 * 60 * 1000)
-
-    localStorage.setItem("admin_logged_in", "true")
-    localStorage.setItem("admin_email", admin.email || "")
-    localStorage.setItem("admin_nombre", admin.email || "Administrador")
-    localStorage.setItem("admin_login_at", ahora.toISOString())
-    localStorage.setItem("admin_session_expires_at", expiracion.toISOString())
-
-    router.replace("/admin")
-    setCargando(false)
   }
 
   return (
@@ -92,7 +161,7 @@ export default function AdminLoginPage() {
       <div
         style={{
           width: "100%",
-          maxWidth: "1120px",
+          maxWidth: "1080px",
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
           gap: "22px",
@@ -151,7 +220,7 @@ export default function AdminLoginPage() {
                 marginBottom: "18px",
               }}
             >
-              Acceso administrativo
+              Acceso administrativo Pysta
             </span>
 
             <h1
@@ -163,9 +232,9 @@ export default function AdminLoginPage() {
                 letterSpacing: "-0.02em",
               }}
             >
-              Panel de
+              Controla y gestiona
               <br />
-              administración
+              toda la operación
             </h1>
 
             <p
@@ -177,15 +246,22 @@ export default function AdminLoginPage() {
                 maxWidth: "520px",
               }}
             >
-              Administra clientes, facturas, premios, redenciones, asesores y la
-              configuración general del sistema Puntos Pysta.
+              Accede al panel administrativo para aprobar clientes, revisar
+              facturas, gestionar redenciones, controlar premios, asesores y la
+              operación general de Puntos Pysta.
             </p>
           </div>
 
-          <div style={{ display: "grid", gap: "12px", marginTop: "28px" }}>
-            <InfoMini texto="Gestión completa de clientes y aprobaciones" />
-            <InfoMini texto="Revisión de facturas y redenciones" />
-            <InfoMini texto="Control de premios, stock y configuración" />
+          <div
+            style={{
+              display: "grid",
+              gap: "12px",
+              marginTop: "28px",
+            }}
+          >
+            <InfoMini texto="Aprueba cuentas y administra clientes" />
+            <InfoMini texto="Revisa premios, redenciones y facturas" />
+            <InfoMini texto="Supervisa el funcionamiento general del sistema" />
           </div>
         </section>
 
@@ -202,20 +278,6 @@ export default function AdminLoginPage() {
             border: "1px solid rgba(0,0,0,0.04)",
           }}
         >
-          <a
-            href="/"
-            style={{
-              display: "inline-flex",
-              width: "fit-content",
-              color: "#111",
-              textDecoration: "none",
-              fontWeight: 700,
-              marginBottom: "22px",
-            }}
-          >
-            ← Volver al inicio
-          </a>
-
           <div style={{ marginBottom: "24px" }}>
             <span
               style={{
@@ -230,7 +292,7 @@ export default function AdminLoginPage() {
                 marginBottom: "16px",
               }}
             >
-              Login administrador
+              Acceso administradores
             </span>
 
             <h2
@@ -241,7 +303,7 @@ export default function AdminLoginPage() {
                 lineHeight: 1.1,
               }}
             >
-              Ingresar al panel
+              Iniciar sesión
             </h2>
 
             <p
@@ -252,24 +314,19 @@ export default function AdminLoginPage() {
                 fontSize: "15px",
               }}
             >
-              Ingresa tus credenciales para acceder al entorno administrativo.
+              Ingresa con tu correo y contraseña para acceder al panel de administración.
             </p>
           </div>
 
           <div style={{ display: "grid", gap: "16px" }}>
             <div>
-              <label style={labelStyle}>Correo administrador</label>
+              <label style={labelStyle}>Correo electrónico</label>
               <input
                 className="campo-pysta"
                 type="email"
-                placeholder="admin@empresa.com"
+                placeholder="ejemplo@correo.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !cargando) {
-                    handleLogin()
-                  }
-                }}
               />
             </div>
 
@@ -282,9 +339,7 @@ export default function AdminLoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !cargando) {
-                    handleLogin()
-                  }
+                  if (e.key === "Enter" && !cargando) handleLogin()
                 }}
               />
             </div>
@@ -305,25 +360,42 @@ export default function AdminLoginPage() {
                 marginTop: "4px",
               }}
             >
-              {cargando ? "Ingresando..." : "Entrar como admin"}
+              {cargando ? "Ingresando..." : "Ingresar"}
             </button>
 
-            {mensaje && (
-              <div
-                style={{
-                  background: "#fff7ed",
-                  border: "1px solid #fed7aa",
-                  color: "#9a3412",
-                  borderRadius: "16px",
-                  padding: "14px 16px",
-                  fontSize: "14px",
-                  lineHeight: 1.5,
-                }}
-              >
-                {mensaje}
-              </div>
-            )}
+            <div
+              style={{
+                display: "grid",
+                gap: "12px",
+                marginTop: "6px",
+              }}
+            >
+              <Link href="/" style={linkStyle}>
+                Volver al inicio
+              </Link>
+
+              <Link href="/login" style={linkStyle}>
+                Ir al acceso de clientes
+              </Link>
+            </div>
           </div>
+
+          {mensaje && (
+            <div
+              style={{
+                marginTop: "20px",
+                background: "#fff7ed",
+                border: "1px solid #fed7aa",
+                color: "#9a3412",
+                borderRadius: "16px",
+                padding: "14px 16px",
+                fontSize: "14px",
+                lineHeight: 1.5,
+              }}
+            >
+              {mensaje}
+            </div>
+          )}
         </section>
       </div>
 
@@ -378,4 +450,12 @@ const labelStyle = {
   color: "#111",
   fontWeight: "bold" as const,
   fontSize: "14px",
+}
+
+const linkStyle = {
+  textAlign: "center" as const,
+  color: "#111",
+  textDecoration: "none",
+  fontWeight: 700,
+  fontSize: "15px",
 }

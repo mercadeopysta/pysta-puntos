@@ -237,7 +237,6 @@ export default function AdminRedencionesPage() {
       }
 
       const current = grouped.get(groupId)
-
       if (!current) return
 
       current.items.push({
@@ -360,6 +359,29 @@ export default function AdminRedencionesPage() {
     }
   }
 
+  const crearNotificacionRedencion = async (
+    userEmail: string,
+    titulo: string,
+    mensajeNotificacion: string,
+    tipo: "success" | "info" | "warning" | "error" = "info"
+  ) => {
+    if (!userEmail) return
+
+    const { error } = await supabase.from("notifications").insert([
+      {
+        user_email: userEmail,
+        title: titulo,
+        message: mensajeNotificacion,
+        type: tipo,
+        is_read: false,
+      },
+    ])
+
+    if (error) {
+      console.error("Error creando notificación de redención:", error)
+    }
+  }
+
   const actualizarGrupoEstado = async (
     grupo: GrupoRedencion,
     nuevoEstado: "approved" | "shipped" | "delivered"
@@ -384,6 +406,31 @@ export default function AdminRedencionesPage() {
       setMensaje("No se pudo actualizar la solicitud: " + error.message)
       return
     }
+
+    let titulo = "Actualización de redención"
+    let mensajeNotificacion = `Tu solicitud ${grupo.display_code || grupo.group_id} fue actualizada.`
+
+    if (nuevoEstado === "approved") {
+      titulo = "Redención aprobada"
+      mensajeNotificacion = `Tu solicitud ${grupo.display_code || grupo.group_id} fue aprobada correctamente.`
+    }
+
+    if (nuevoEstado === "shipped") {
+      titulo = "Redención enviada"
+      mensajeNotificacion = `Tu solicitud ${grupo.display_code || grupo.group_id} fue marcada como enviada.`
+    }
+
+    if (nuevoEstado === "delivered") {
+      titulo = "Redención entregada"
+      mensajeNotificacion = `Tu solicitud ${grupo.display_code || grupo.group_id} fue marcada como entregada.`
+    }
+
+    await crearNotificacionRedencion(
+      grupo.user_email,
+      titulo,
+      mensajeNotificacion,
+      nuevoEstado === "approved" ? "success" : "info"
+    )
 
     setTipoMensaje("success")
     setMensaje(`Solicitud actualizada a ${traducirEstado(nuevoEstado)}.`)
@@ -485,6 +532,13 @@ export default function AdminRedencionesPage() {
           return
         }
 
+        await crearNotificacionRedencion(
+          grupoACancelar.user_email,
+          "Redención cancelada",
+          `Tu solicitud ${grupoACancelar.display_code || grupoACancelar.group_id} fue cancelada. Motivo: ${motivo}`,
+          "warning"
+        )
+
         setTipoMensaje("success")
         setMensaje("Solicitud cancelada correctamente con motivo guardado.")
         setGuardandoCancelacion(false)
@@ -528,6 +582,15 @@ export default function AdminRedencionesPage() {
         setMensaje("No se pudo cancelar las solicitudes seleccionadas: " + error.message)
         setGuardandoCancelacion(false)
         return
+      }
+
+      for (const grupo of gruposSeleccionados) {
+        await crearNotificacionRedencion(
+          grupo.user_email,
+          "Redención cancelada",
+          `Tu solicitud ${grupo.display_code || grupo.group_id} fue cancelada. Motivo: ${motivo}`,
+          "warning"
+        )
       }
 
       setTipoMensaje("success")
@@ -647,6 +710,33 @@ export default function AdminRedencionesPage() {
       setMensaje("No se pudo ejecutar la acción masiva: " + error.message)
       setEjecutandoMasivo(false)
       return
+    }
+
+    for (const grupo of gruposSeleccionados) {
+      let titulo = "Actualización de redención"
+      let mensajeNotificacion = `Tu solicitud ${grupo.display_code || grupo.group_id} fue actualizada.`
+
+      if (bulkAction === "approved") {
+        titulo = "Redención aprobada"
+        mensajeNotificacion = `Tu solicitud ${grupo.display_code || grupo.group_id} fue aprobada correctamente.`
+      }
+
+      if (bulkAction === "shipped") {
+        titulo = "Redención enviada"
+        mensajeNotificacion = `Tu solicitud ${grupo.display_code || grupo.group_id} fue marcada como enviada.`
+      }
+
+      if (bulkAction === "delivered") {
+        titulo = "Redención entregada"
+        mensajeNotificacion = `Tu solicitud ${grupo.display_code || grupo.group_id} fue marcada como entregada.`
+      }
+
+      await crearNotificacionRedencion(
+        grupo.user_email,
+        titulo,
+        mensajeNotificacion,
+        bulkAction === "approved" ? "success" : "info"
+      )
     }
 
     setTipoMensaje("success")

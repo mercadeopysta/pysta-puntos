@@ -7,28 +7,33 @@ export default function AdminLogoutButton() {
   const router = useRouter()
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-
-    localStorage.removeItem("admin_logged_in")
-    localStorage.removeItem("admin_email")
-    localStorage.removeItem("admin_nombre")
-
-    router.replace("/admin/login")
+    try {
+      await supabase.auth.signOut()
+    } catch (error) {
+      console.error("Error cerrando sesión admin:", error)
+    } finally {
+      localStorage.removeItem("admin_logged_in")
+      localStorage.removeItem("admin_email")
+      localStorage.removeItem("admin_nombre")
+      localStorage.removeItem("admin_login_at")
+      localStorage.removeItem("admin_session_expires_at")
+      router.replace("/admin/login")
+    }
   }
 
   return (
     <button
+      type="button"
       onClick={handleLogout}
       style={{
-        background: "linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)",
-        color: "#fff",
-        border: "1px solid rgba(255,255,255,0.08)",
-        padding: "12px 18px",
+        border: "1px solid rgba(220,38,38,0.18)",
+        background: "linear-gradient(180deg, #fff5f5 0%, #fff1f2 100%)",
+        color: "#b91c1c",
         borderRadius: "14px",
+        padding: "12px 16px",
+        fontWeight: 800,
         cursor: "pointer",
-        fontSize: "14px",
-        fontWeight: 700,
-        boxShadow: "0 10px 24px rgba(185, 28, 28, 0.25)",
+        boxShadow: "0 8px 18px rgba(220,38,38,0.08)",
       }}
     >
       Cerrar sesión
