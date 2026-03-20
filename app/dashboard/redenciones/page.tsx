@@ -41,6 +41,7 @@ export default function DashboardRedencionesPage() {
 
   const [autorizado, setAutorizado] = useState(false)
   const [nombre, setNombre] = useState("")
+  const [asesorResponsable, setAsesorResponsable] = useState("")
   const [redenciones, setRedenciones] = useState<Redencion[]>([])
   const [cargando, setCargando] = useState(true)
 
@@ -64,7 +65,7 @@ export default function DashboardRedencionesPage() {
 
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
-          .select("id, email, full_name, is_active, is_approved")
+          .select("id, email, full_name, advisor_name, is_active, is_approved")
           .eq("id", user.id)
           .maybeSingle()
 
@@ -89,6 +90,7 @@ export default function DashboardRedencionesPage() {
         localStorage.setItem("cliente_email", profile.email || "")
         localStorage.setItem("cliente_name", profile.full_name || "")
         setNombre(profile.full_name || "")
+        setAsesorResponsable(profile.advisor_name || "")
 
         const { data, error } = await supabase
           .from("redemptions")
@@ -323,6 +325,65 @@ export default function DashboardRedencionesPage() {
             </div>
           </div>
         </section>
+
+        {asesorResponsable ? (
+          <section
+            style={{
+              background: "#fff",
+              borderRadius: "20px",
+              padding: "18px 20px",
+              boxShadow: "0 10px 28px rgba(0,0,0,0.06)",
+              border: "1px solid rgba(0,0,0,0.04)",
+              marginBottom: "22px",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gap: "6px",
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-flex",
+                  width: "fit-content",
+                  padding: "6px 10px",
+                  borderRadius: "999px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  background: "rgba(212, 175, 55, 0.14)",
+                  color: "#7a5b00",
+                  border: "1px solid rgba(212, 175, 55, 0.24)",
+                }}
+              >
+                Asesor responsable
+              </span>
+
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "20px",
+                  fontWeight: 700,
+                  color: "#111",
+                  lineHeight: 1.3,
+                }}
+              >
+                {asesorResponsable}
+              </p>
+
+              <p
+                style={{
+                  margin: 0,
+                  color: "#6b7280",
+                  lineHeight: 1.5,
+                  fontSize: "14px",
+                }}
+              >
+                Este es el asesor asociado a tu cuenta para el seguimiento de tu gestión.
+              </p>
+            </div>
+          </section>
+        ) : null}
 
         {grupos.length === 0 ? (
           <section
