@@ -46,7 +46,11 @@ export default function AdminLoginPage() {
           .eq("email", emailSesion)
           .maybeSingle()
 
-        if (error || !data) return
+        if (error || !data) {
+          await supabase.auth.signOut()
+          limpiarSesionAdmin()
+          return
+        }
 
         const ahora = new Date()
         const expiracion = new Date(
@@ -62,6 +66,7 @@ export default function AdminLoginPage() {
         router.replace("/admin")
       } catch (error) {
         console.error("Error verificando sesión admin existente:", error)
+        limpiarSesionAdmin()
       }
     }
 
@@ -78,6 +83,7 @@ export default function AdminLoginPage() {
 
     try {
       setCargando(true)
+      limpiarSesionAdmin()
 
       const correo = email.trim().toLowerCase()
 
@@ -99,6 +105,7 @@ export default function AdminLoginPage() {
 
       if (userError || !user?.email) {
         await supabase.auth.signOut()
+        limpiarSesionAdmin()
         setMensaje("No se pudo iniciar sesión correctamente.")
         setCargando(false)
         return
@@ -114,6 +121,7 @@ export default function AdminLoginPage() {
 
       if (adminError) {
         await supabase.auth.signOut()
+        limpiarSesionAdmin()
         setMensaje("Ocurrió un error validando el acceso administrativo.")
         setCargando(false)
         return
@@ -139,7 +147,10 @@ export default function AdminLoginPage() {
       localStorage.setItem("admin_session_expires_at", expiracion.toISOString())
 
       router.push("/admin")
-    } catch {
+    } catch (error) {
+      console.error("Error login admin:", error)
+      await supabase.auth.signOut()
+      limpiarSesionAdmin()
       setMensaje("Ocurrió un error inesperado al iniciar sesión.")
     } finally {
       setCargando(false)
