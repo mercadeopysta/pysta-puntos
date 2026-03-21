@@ -11,6 +11,8 @@ type Asesor = {
   is_active: boolean
 }
 
+const DATA_POLICY_VERSION = "v1"
+
 export default function RegistroPage() {
   const router = useRouter()
 
@@ -144,6 +146,8 @@ export default function RegistroPage() {
         return
       }
 
+      const fechaAceptacion = new Date().toISOString()
+
       const { error: profileError } = await supabase.from("profiles").insert([
         {
           id: userId,
@@ -156,6 +160,9 @@ export default function RegistroPage() {
           email: correo,
           is_active: true,
           is_approved: false,
+          accepted_data_policy: true,
+          data_policy_accepted_at: fechaAceptacion,
+          data_policy_version: DATA_POLICY_VERSION,
         },
       ])
 
@@ -168,7 +175,13 @@ export default function RegistroPage() {
         return
       }
 
-      await supabase.auth.signOut()
+      const {
+        data: { session: sessionActual },
+      } = await supabase.auth.getSession()
+
+      if (sessionActual) {
+        await supabase.auth.signOut()
+      }
 
       setMensaje(
         "Registro creado correctamente. Tu cuenta quedó pendiente de aprobación por el administrador."
@@ -392,9 +405,6 @@ export default function RegistroPage() {
                   <option value="">Selecciona tipo</option>
                   <option value="Mayorista">Mayorista</option>
                   <option value="Distribuidor">Distribuidor</option>
-                  <option value="Taller">Taller</option>
-                  <option value="Almacén">Almacén</option>
-                  <option value="Cliente final">Cliente final</option>
                 </select>
               </div>
 
@@ -593,8 +603,6 @@ export default function RegistroPage() {
               <Link href="/login" style={linkStyle}>
                 Ya tengo cuenta
               </Link>
-
-          
             </div>
           </div>
 
