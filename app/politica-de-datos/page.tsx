@@ -67,7 +67,7 @@ export default function PoliticaDeDatosPage() {
           <p style={p}>
             El responsable del tratamiento de los datos personales es{" "}
             <strong> PYSTA SAS </strong>, identificada con NIT{""}
-            <strong> 900989305 </strong>, con domicilio en <strong> CALI </strong>,
+            <strong> 900989305 </strong>, con domicilio en <strong> LA NUBIA 2 BODEGA 3 VIA CANDELARIA CALI </strong>,
             correo electrónico <strong> MERCADEO@PYSTA.CO </strong> y teléfono{""}
             <strong> 311 6825832 </strong>.
           </p>
