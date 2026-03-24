@@ -66,10 +66,10 @@ export default function PoliticaDeDatosPage() {
         <Section title="1. Responsable del tratamiento">
           <p style={p}>
             El responsable del tratamiento de los datos personales es{" "}
-            <strong>[PYSTA SAS]</strong>, identificada con NIT{""}
-            <strong>[900989305]</strong>, con domicilio en <strong>[CALI]</strong>,
-            correo electrónico <strong>[MERCADEO@PYSTA.CO]</strong> y teléfono{""}
-            <strong>[311 6825832]</strong>.
+            <strong> PYSTA SAS </strong>, identificada con NIT{""}
+            <strong> 900989305 </strong>, con domicilio en <strong> CALI </strong>,
+            correo electrónico <strong> MERCADEO@PYSTA.CO </strong> y teléfono{""}
+            <strong> 311 6825832 </strong>.
           </p>
         </Section>
 
