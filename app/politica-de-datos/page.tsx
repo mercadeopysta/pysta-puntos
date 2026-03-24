@@ -130,7 +130,7 @@ export default function PoliticaDeDatosPage() {
         <Section title="6. Consultas y reclamos">
           <p style={p}>
             Los titulares podrán radicar sus consultas o reclamos a través de{" "}
-            <strong>[CORREO DE PRIVACIDAD O PQRS]</strong> o en los canales
+            <strong> SOPORTE@PYSTA.CO </strong> o en los canales
             oficiales que disponga la empresa. La solicitud deberá incluir como
             mínimo la identificación del titular, los datos de contacto, la
             descripción clara de la consulta o reclamo y los soportes que
@@ -176,7 +176,7 @@ export default function PoliticaDeDatosPage() {
         <Section title="11. Fecha de entrada en vigencia">
           <p style={p}>
             Esta política entra en vigencia a partir del{" "}
-            <strong>[FECHA DE ENTRADA EN VIGENCIA]</strong>.
+            <strong> 26 DE MARZO DE 2026 </strong>.
           </p>
         </Section>
 
