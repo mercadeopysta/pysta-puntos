@@ -831,7 +831,11 @@ export default function DashboardPage() {
                 titulo="Registrar factura"
                 descripcion="Sube una nueva factura para validación."
               />
-
+              <MenuCard
+                href="/dashboard/mis-facturas"
+                titulo="Mis facturas"
+                descripcion="Mira el historial y estado de tus facturas."
+              />
               <MenuCard
                 href="/dashboard/premios"
                 titulo="Ver premios"
@@ -844,11 +848,7 @@ export default function DashboardPage() {
                 descripcion="Revisa el estado de tus solicitudes."
               />
 
-              <MenuCard
-                href="/dashboard/mis-facturas"
-                titulo="Mis facturas"
-                descripcion="Mira el historial y estado de tus facturas."
-              />
+
             </div>
           </section>
         </div>
