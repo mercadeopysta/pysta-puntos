@@ -58,7 +58,7 @@ export default function HomePage() {
 
               <p className="pysta-subtitle">
                 Acumula puntos con tus compras, registra tus facturas y redime
-                premios exclusivos según tu tipo de cliente.
+                premios exclusivos.
               </p>
 
               <div className="pysta-actions">
@@ -76,7 +76,7 @@ export default function HomePage() {
               </div>
 
               <p style={{ margin: 0, color: "#6b7280", fontSize: "14px" }}>
-                Gestiona clientes, facturas, puntos y redenciones desde una sola plataforma.
+                Gestiona desde una sola plataforma.
               </p>
             </div>
 
@@ -110,7 +110,7 @@ export default function HomePage() {
                 <div className="pysta-stat-card">
                   <p className="pysta-stat-label">Premios</p>
                   <p style={{ margin: 0, color: "#111", lineHeight: 1.5 }}>
-                    Consulta premios disponibles y administra el límite mensual de ítems.
+                    Consulta premios disponibles.
                   </p>
                 </div>
               </div>
