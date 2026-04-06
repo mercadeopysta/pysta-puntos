@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "../../lib/supabase"
 
 export default function ActualizarContrasenaPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -18,12 +19,29 @@ export default function ActualizarContrasenaPage() {
   useEffect(() => {
     const prepararSesion = async () => {
       try {
+        const code = searchParams.get("code")
+
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+
+          if (error) {
+            setMensaje("No se pudo validar el enlace de recuperación.")
+            setTokenValido(false)
+            setSesionLista(true)
+            return
+          }
+
+          setTokenValido(true)
+          setSesionLista(true)
+          return
+        }
+
         const hash = window.location.hash
 
         if (!hash) {
           setMensaje("El enlace de recuperación no es válido o ya expiró.")
-          setSesionLista(true)
           setTokenValido(false)
+          setSesionLista(true)
           return
         }
 
@@ -34,8 +52,8 @@ export default function ActualizarContrasenaPage() {
 
         if (!accessToken || !refreshToken || type !== "recovery") {
           setMensaje("El enlace de recuperación no es válido o ya expiró.")
-          setSesionLista(true)
           setTokenValido(false)
+          setSesionLista(true)
           return
         }
 
@@ -46,22 +64,23 @@ export default function ActualizarContrasenaPage() {
 
         if (error) {
           setMensaje("No se pudo validar el enlace de recuperación.")
-          setSesionLista(true)
           setTokenValido(false)
+          setSesionLista(true)
           return
         }
 
         setTokenValido(true)
         setSesionLista(true)
-      } catch {
+      } catch (error) {
+        console.error("Error preparando recuperación:", error)
         setMensaje("Ocurrió un error preparando la recuperación.")
-        setSesionLista(true)
         setTokenValido(false)
+        setSesionLista(true)
       }
     }
 
     prepararSesion()
-  }, [])
+  }, [searchParams])
 
   const handleActualizar = async () => {
     setMensaje("")
@@ -97,10 +116,22 @@ export default function ActualizarContrasenaPage() {
       setMensaje("Tu contraseña fue actualizada correctamente.")
 
       setTimeout(async () => {
-        await supabase.auth.signOut()
+        try {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession()
+
+          if (session) {
+            await supabase.auth.signOut()
+          }
+        } catch (error) {
+          console.error("Error cerrando sesión luego del cambio:", error)
+        }
+
         router.push("/login")
       }, 1500)
-    } catch {
+    } catch (error) {
+      console.error("Error actualizando contraseña:", error)
       setMensaje("Ocurrió un error inesperado al actualizar la contraseña.")
     } finally {
       setCargando(false)

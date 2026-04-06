@@ -39,7 +39,8 @@ export default function OlvideMiContrasenaPage() {
 
       setMensaje("Si el correo existe, te enviamos un enlace para restablecer tu contraseña.")
       setEmail("")
-    } catch {
+    } catch (error) {
+      console.error("Error enviando recuperación:", error)
       setMensaje("Ocurrió un error inesperado al enviar la recuperación.")
     } finally {
       setCargando(false)
