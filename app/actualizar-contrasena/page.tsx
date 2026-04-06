@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { supabase } from "../../lib/supabase"
 
 export default function ActualizarContrasenaPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -19,6 +18,7 @@ export default function ActualizarContrasenaPage() {
   useEffect(() => {
     const prepararSesion = async () => {
       try {
+        const searchParams = new URLSearchParams(window.location.search)
         const code = searchParams.get("code")
 
         if (code) {
@@ -80,7 +80,7 @@ export default function ActualizarContrasenaPage() {
     }
 
     prepararSesion()
-  }, [searchParams])
+  }, [])
 
   const handleActualizar = async () => {
     setMensaje("")
