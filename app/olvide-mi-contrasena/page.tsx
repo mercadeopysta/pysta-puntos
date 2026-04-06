@@ -21,11 +21,7 @@ export default function OlvideMiContrasenaPage() {
       setCargando(true)
 
       const correo = email.trim().toLowerCase()
-
-      const redirectTo =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/actualizar-contrasena`
-          : undefined
+      const redirectTo = "https://puntos.pysta.co/actualizar-contrasena"
 
       const { error } = await supabase.auth.resetPasswordForEmail(correo, {
         redirectTo,
